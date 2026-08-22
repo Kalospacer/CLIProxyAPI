@@ -156,6 +156,9 @@ func sanitizeCodexKeyEntries(entries []CodexKey) []CodexKey {
 		e.BaseURL = strings.TrimSpace(e.BaseURL)
 		e.Headers = NormalizeHeaders(e.Headers)
 		e.ExcludedModels = NormalizeExcludedModels(e.ExcludedModels)
+		for j := range e.APIKeyEntries {
+			e.APIKeyEntries[j].APIKey = strings.TrimSpace(e.APIKeyEntries[j].APIKey)
+		}
 		if e.BaseURL == "" {
 			continue
 		}
@@ -299,3 +302,4 @@ func NormalizeOAuthExcludedModels(entries map[string][]string) map[string][]stri
 	}
 	return out
 }
+

@@ -207,61 +207,86 @@ func (s *ConfigSynthesizer) synthesizeCodexStyleKeys(ctx *SynthesisContext, entr
 	now := ctx.Now
 	idGen := ctx.IDGenerator
 
+	type codexCredential struct {
+		key      string
+		weight   *int
+		proxyURL string
+	}
 	out := make([]*coreauth.Auth, 0, len(entries))
 	for i := range entries {
 		entry := entries[i]
-		key := strings.TrimSpace(entry.APIKey)
-		if key == "" {
-			continue
+		var creds []codexCredential
+		if key := strings.TrimSpace(entry.APIKey); key != "" {
+			creds = append(creds, codexCredential{key: key, weight: entry.Weight})
+		}
+		for _, bundled := range entry.APIKeyEntries {
+			key := strings.TrimSpace(bundled.APIKey)
+			if key == "" {
+				continue
+			}
+			cred := codexCredential{key: key, weight: entry.Weight}
+			if bundled.Weight != nil {
+				cred.weight = bundled.Weight
+			}
+			if strings.TrimSpace(bundled.ProxyURL) != "" {
+				cred.proxyURL = strings.TrimSpace(bundled.ProxyURL)
+			}
+			creds = append(creds, cred)
 		}
 		prefix := strings.TrimSpace(entry.Prefix)
 		baseURL := strings.TrimSpace(entry.BaseURL)
-		id, token := idGen.Next(provider+":apikey", key, baseURL)
-		attrs := map[string]string{
-			"source":       fmt.Sprintf("config:%s[%s]", provider, token),
-			"api_key":      key,
-			"config_index": strconv.Itoa(i),
+		for _, cred := range creds {
+			id, token := idGen.Next(provider+":apikey", cred.key, baseURL)
+			attrs := map[string]string{
+				"source":       fmt.Sprintf("config:%s[%s]", provider, token),
+				"api_key":      cred.key,
+				"config_index": strconv.Itoa(i),
+			}
+			metadata := map[string]any{}
+			if entry.DisableCooling != nil {
+				metadata["disable_cooling"] = *entry.DisableCooling
+			}
+			addRequestRetryToMetadata(entry.RequestRetry, metadata)
+			addRequestScopedErrorsToMetadata(entry.RequestScopedErrors, metadata)
+			if entry.Priority != 0 {
+				attrs["priority"] = strconv.Itoa(entry.Priority)
+			}
+			addWeightToAttrs(cred.weight, attrs)
+			if baseURL != "" {
+				attrs["base_url"] = baseURL
+			}
+			if entry.Websockets {
+				attrs["websockets"] = "true"
+			}
+			if provider == "codex" && entry.AlphaSearch {
+				attrs[coreauth.AttributeCodexAlphaSearch] = "true"
+			}
+			if hash := diff.ComputeCodexModelsHash(entry.Models); hash != "" {
+				attrs["models_hash"] = hash
+			}
+			addConfigHeadersToAttrs(entry.Headers, attrs)
+			proxyURL := strings.TrimSpace(entry.ProxyURL)
+			if cred.proxyURL != "" {
+				proxyURL = cred.proxyURL
+			}
+			a := &coreauth.Auth{
+				ID:         id,
+				Provider:   provider,
+				Label:      provider + "-apikey",
+				Prefix:     prefix,
+				Status:     coreauth.StatusActive,
+				ProxyURL:   proxyURL,
+				Attributes: attrs,
+				Metadata:   metadata,
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}
+			ApplyAuthExcludedModelsMeta(a, cfg, entry.ExcludedModels, "apikey")
+			if len(a.Metadata) == 0 {
+				a.Metadata = nil
+			}
+			out = append(out, a)
 		}
-		metadata := map[string]any{}
-		if entry.DisableCooling != nil {
-			metadata["disable_cooling"] = *entry.DisableCooling
-		}
-		addRequestRetryToMetadata(entry.RequestRetry, metadata)
-		addRequestScopedErrorsToMetadata(entry.RequestScopedErrors, metadata)
-		if entry.Priority != 0 {
-			attrs["priority"] = strconv.Itoa(entry.Priority)
-		}
-		addWeightToAttrs(entry.Weight, attrs)
-		if baseURL != "" {
-			attrs["base_url"] = baseURL
-		}
-		if entry.Websockets {
-			attrs["websockets"] = "true"
-		}
-		if provider == "codex" && entry.AlphaSearch {
-			attrs[coreauth.AttributeCodexAlphaSearch] = "true"
-		}
-		if hash := diff.ComputeCodexModelsHash(entry.Models); hash != "" {
-			attrs["models_hash"] = hash
-		}
-		addConfigHeadersToAttrs(entry.Headers, attrs)
-		a := &coreauth.Auth{
-			ID:         id,
-			Provider:   provider,
-			Label:      provider + "-apikey",
-			Prefix:     prefix,
-			Status:     coreauth.StatusActive,
-			ProxyURL:   strings.TrimSpace(entry.ProxyURL),
-			Attributes: attrs,
-			Metadata:   metadata,
-			CreatedAt:  now,
-			UpdatedAt:  now,
-		}
-		ApplyAuthExcludedModelsMeta(a, cfg, entry.ExcludedModels, "apikey")
-		if len(a.Metadata) == 0 {
-			a.Metadata = nil
-		}
-		out = append(out, a)
 	}
 	return out
 }

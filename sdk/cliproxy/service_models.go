@@ -507,10 +507,17 @@ func resolveConfigCodexStyleKey(auth *coreauth.Auth, entries []config.CodexKey, 
 		if entry == nil {
 			return false
 		}
-		cfgKey := strings.TrimSpace(entry.APIKey)
 		cfgBase := strings.TrimSpace(entry.BaseURL)
 		if attrKey != "" {
-			return strings.EqualFold(cfgKey, attrKey) && (cfgBase == "" || strings.EqualFold(cfgBase, attrBase))
+			if strings.EqualFold(strings.TrimSpace(entry.APIKey), attrKey) {
+				return cfgBase == "" || strings.EqualFold(cfgBase, attrBase)
+			}
+			for _, bundled := range entry.APIKeyEntries {
+				if strings.EqualFold(strings.TrimSpace(bundled.APIKey), attrKey) {
+					return cfgBase == "" || strings.EqualFold(cfgBase, attrBase)
+				}
+			}
+			return false
 		}
 		return attrBase != "" && strings.EqualFold(cfgBase, attrBase)
 	}

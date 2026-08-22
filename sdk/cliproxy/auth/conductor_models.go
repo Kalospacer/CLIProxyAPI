@@ -783,7 +783,27 @@ func resolveCodexAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalc
 	if cfg == nil {
 		return nil
 	}
-	return resolveAPIKeyConfig(cfg.CodexKey, auth)
+	if entry := resolveAPIKeyConfig(cfg.CodexKey, auth); entry != nil {
+		return entry
+	}
+	// Bundled codex api-key-entries share one config entry; match inner keys when the
+	// flat lookup misses.
+	var attrKey string
+	if auth != nil && auth.Attributes != nil {
+		attrKey = strings.TrimSpace(auth.Attributes["api_key"])
+	}
+	if attrKey == "" {
+		return nil
+	}
+	for i := range cfg.CodexKey {
+		entry := &cfg.CodexKey[i]
+		for _, bundled := range entry.APIKeyEntries {
+			if strings.EqualFold(strings.TrimSpace(bundled.APIKey), attrKey) {
+				return entry
+			}
+		}
+	}
+	return nil
 }
 
 func resolveXAIAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalconfig.XAIKey {

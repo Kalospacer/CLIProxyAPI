@@ -434,6 +434,11 @@ type CodexKey struct {
 	// APIKey is the authentication key for accessing Codex API services.
 	APIKey string `yaml:"api-key" json:"api-key"`
 
+	// APIKeyEntries allows bundling multiple API keys that share this entry's settings.
+	// Each bundled key inherits the entry's base-url, models, headers, and other options,
+	// mirroring the api-key-entries mechanism of openai-compatibility providers.
+	APIKeyEntries []OpenAICompatibilityAPIKey `yaml:"api-key-entries,omitempty" json:"api-key-entries,omitempty"`
+
 	// Priority controls selection preference when multiple credentials match.
 	// Higher values are preferred; defaults to 0.
 	Priority int `yaml:"priority,omitempty" json:"priority,omitempty"`

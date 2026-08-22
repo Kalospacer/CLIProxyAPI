@@ -606,6 +606,17 @@ func proxyURLFromAPIKeyConfig(cfg *config.Config, auth *coreauth.Auth) string {
 		if entry := resolveAPIKeyConfig(cfg.CodexKey, auth); entry != nil {
 			return strings.TrimSpace(entry.ProxyURL)
 		}
+		if auth != nil && auth.Attributes != nil {
+			if attrKey := strings.TrimSpace(auth.Attributes["api_key"]); attrKey != "" {
+				for i := range cfg.CodexKey {
+					for _, bundled := range cfg.CodexKey[i].APIKeyEntries {
+						if strings.EqualFold(strings.TrimSpace(bundled.APIKey), attrKey) {
+							return strings.TrimSpace(cfg.CodexKey[i].ProxyURL)
+						}
+					}
+				}
+			}
+		}
 	case "xai":
 		if entry := resolveAPIKeyConfig(cfg.XAIKey, auth); entry != nil {
 			return strings.TrimSpace(entry.ProxyURL)
