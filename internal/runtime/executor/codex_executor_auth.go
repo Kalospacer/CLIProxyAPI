@@ -79,29 +79,29 @@ func (e *CodexExecutor) resolveCodexConfig(auth *cliproxyauth.Auth) *config.Code
 		attrKey = strings.TrimSpace(auth.Attributes["api_key"])
 		attrBase = strings.TrimSpace(auth.Attributes["base_url"])
 	}
+	match := func(cfgKeyRaw string, entry *config.CodexKey) bool {
+		if !strings.EqualFold(strings.TrimSpace(cfgKeyRaw), attrKey) {
+			return false
+		}
+		cfgBase := strings.TrimSpace(entry.BaseURL)
+		if attrBase == "" || cfgBase == "" {
+			return true
+		}
+		return strings.EqualFold(cfgBase, attrBase)
+	}
 	for i := range e.cfg.CodexKey {
 		entry := &e.cfg.CodexKey[i]
-		cfgKey := strings.TrimSpace(entry.APIKey)
-		cfgBase := strings.TrimSpace(entry.BaseURL)
-		if attrKey != "" && attrBase != "" {
-			if strings.EqualFold(cfgKey, attrKey) && strings.EqualFold(cfgBase, attrBase) {
+		if attrKey == "" {
+			if attrBase != "" && strings.EqualFold(strings.TrimSpace(entry.BaseURL), attrBase) {
 				return entry
 			}
 			continue
 		}
-		if attrKey != "" && strings.EqualFold(cfgKey, attrKey) {
-			if cfgBase == "" || strings.EqualFold(cfgBase, attrBase) {
-				return entry
-			}
-		}
-		if attrKey == "" && attrBase != "" && strings.EqualFold(cfgBase, attrBase) {
+		if match(entry.APIKey, entry) {
 			return entry
 		}
-	}
-	if attrKey != "" {
-		for i := range e.cfg.CodexKey {
-			entry := &e.cfg.CodexKey[i]
-			if strings.EqualFold(strings.TrimSpace(entry.APIKey), attrKey) {
+		for _, bundled := range entry.APIKeyEntries {
+			if match(bundled.APIKey, entry) {
 				return entry
 			}
 		}
