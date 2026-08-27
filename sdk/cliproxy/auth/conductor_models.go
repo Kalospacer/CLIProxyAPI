@@ -786,19 +786,52 @@ func resolveCodexAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalc
 	if entry := resolveAPIKeyConfig(cfg.CodexKey, auth); entry != nil {
 		return entry
 	}
-	// Bundled codex api-key-entries share one config entry; match inner keys when the
-	// flat lookup misses.
-	var attrKey string
+	// Bundled codex api-key-entries share one config entry; match inner keys when
+	// the flat lookup misses. Narrow candidates with the auth's config_index,
+	// prefix, proxy, and base_url before trusting a bare key match, so a key
+	// reused across entries cannot resolve to the wrong model mapping.
+	var attrKey, attrBase string
 	if auth != nil && auth.Attributes != nil {
 		attrKey = strings.TrimSpace(auth.Attributes["api_key"])
+		attrBase = strings.TrimSpace(auth.Attributes["base_url"])
 	}
 	if attrKey == "" {
 		return nil
 	}
+	matchesBundled := func(entry *internalconfig.CodexKey, bundled internalconfig.OpenAICompatibilityAPIKey) bool {
+		if !strings.EqualFold(strings.TrimSpace(bundled.APIKey), attrKey) {
+			return false
+		}
+		if auth != nil {
+			if !strings.EqualFold(strings.TrimSpace(entry.GetPrefix()), strings.TrimSpace(auth.Prefix)) {
+				return false
+			}
+			if !strings.EqualFold(strings.TrimSpace(entry.GetProxyURL()), strings.TrimSpace(auth.ProxyURL)) {
+				return false
+			}
+		}
+		if attrBase != "" {
+			cfgBase := strings.TrimSpace(entry.GetBaseURL())
+			if cfgBase != "" && !strings.EqualFold(cfgBase, attrBase) {
+				return false
+			}
+		}
+		return true
+	}
+	if auth != nil && auth.AuthSourceKind() == AuthSourceConfig && auth.Attributes != nil {
+		if index, errIndex := strconv.Atoi(strings.TrimSpace(auth.Attributes[AttributeConfigIndex])); errIndex == nil && index >= 0 && index < len(cfg.CodexKey) {
+			entry := &cfg.CodexKey[index]
+			for _, bundled := range entry.APIKeyEntries {
+				if matchesBundled(entry, bundled) {
+					return entry
+				}
+			}
+		}
+	}
 	for i := range cfg.CodexKey {
 		entry := &cfg.CodexKey[i]
 		for _, bundled := range entry.APIKeyEntries {
-			if strings.EqualFold(strings.TrimSpace(bundled.APIKey), attrKey) {
+			if matchesBundled(entry, bundled) {
 				return entry
 			}
 		}

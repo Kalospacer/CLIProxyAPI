@@ -226,19 +226,25 @@ func (s *ConfigSynthesizer) synthesizeCodexStyleKeys(ctx *SynthesisContext, entr
 		if key := strings.TrimSpace(entry.APIKey); key != "" {
 			creds = append(creds, codexCredential{key: key, weight: entry.Weight})
 		}
-		for _, bundled := range entry.APIKeyEntries {
-			key := strings.TrimSpace(bundled.APIKey)
-			if key == "" {
-				continue
+		// Bundled api-key-entries are only resolved back to their config entry
+		// for codex; the xAI resolver matches the top-level APIKey only, so
+		// synthesizing xAI bundled keys would register auths whose model
+		// aliases and capabilities never resolve.
+		if provider == "codex" {
+			for _, bundled := range entry.APIKeyEntries {
+				key := strings.TrimSpace(bundled.APIKey)
+				if key == "" {
+					continue
+				}
+				cred := codexCredential{key: key, weight: entry.Weight}
+				if bundled.Weight != nil {
+					cred.weight = bundled.Weight
+				}
+				if strings.TrimSpace(bundled.ProxyURL) != "" {
+					cred.proxyURL = strings.TrimSpace(bundled.ProxyURL)
+				}
+				creds = append(creds, cred)
 			}
-			cred := codexCredential{key: key, weight: entry.Weight}
-			if bundled.Weight != nil {
-				cred.weight = bundled.Weight
-			}
-			if strings.TrimSpace(bundled.ProxyURL) != "" {
-				cred.proxyURL = strings.TrimSpace(bundled.ProxyURL)
-			}
-			creds = append(creds, cred)
 		}
 		if len(creds) == 0 {
 			// No keys at all: keep upstream behavior of emitting one auth for a

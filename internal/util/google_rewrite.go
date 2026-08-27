@@ -18,15 +18,11 @@ import (
 //
 // Configuration (environment variables):
 //   - GOOGLE_PROXY_BASE: reverse-proxy base URL, e.g. "https://proxy.example".
-//     The value "off"/"none"/"" explicitly disables rewriting.
+//     Rewriting stays disabled until this variable is set; the values
+//     "off"/"none"/"" explicitly disable it as well.
 //   - GOOGLE_PROXY_KEY: shared key sent as the "x-proxy-key" header.
-//
-// Defaults are baked in for private deployments; set GOOGLE_PROXY_BASE=off to
-// restore direct connectivity.
 const (
-	defaultGoogleProxyBase = "https://proxy.example.com"
-	defaultGoogleProxyKey  = "replace-with-your-proxy-key"
-	googleProxyKeyHeader   = "x-proxy-key"
+	googleProxyKeyHeader = "x-proxy-key"
 )
 
 var (
@@ -38,7 +34,7 @@ var (
 func resolveGoogleProxyBase() string {
 	raw, ok := os.LookupEnv("GOOGLE_PROXY_BASE")
 	if !ok {
-		return defaultGoogleProxyBase
+		return ""
 	}
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "", "off", "none":
@@ -57,13 +53,6 @@ func mustParseGoogleProxyBase(base string) *url.URL {
 		return nil
 	}
 	return parsed
-}
-
-func googleProxyKey() string {
-	if googleProxyAuth != "" {
-		return googleProxyAuth
-	}
-	return defaultGoogleProxyKey
 }
 
 // isGoogleEndpointHost reports whether the given host is a Google API endpoint
@@ -86,7 +75,7 @@ func (t *googleRewriteTransport) RoundTrip(req *http.Request) (*http.Response, e
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	if googleProxyURL == nil || req.URL == nil || !isGoogleEndpointHost(req.URL.Hostname()) {
+	if googleProxyAuth == "" || googleProxyURL == nil || req.URL == nil || !isGoogleEndpointHost(req.URL.Hostname()) {
 		return base.RoundTrip(req)
 	}
 
@@ -100,9 +89,7 @@ func (t *googleRewriteTransport) RoundTrip(req *http.Request) (*http.Response, e
 	r2.URL.Path = prefix + "/" + req.URL.Host + req.URL.Path
 	r2.URL.RawPath = ""
 	r2.Host = "" // let net/http derive the Host header from the rewritten URL
-	if key := googleProxyKey(); key != "" {
-		r2.Header.Set(googleProxyKeyHeader, key)
-	}
+	r2.Header.Set(googleProxyKeyHeader, googleProxyAuth)
 	return base.RoundTrip(r2)
 }
 

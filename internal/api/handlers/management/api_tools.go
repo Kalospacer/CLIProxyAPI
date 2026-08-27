@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -609,17 +610,63 @@ func proxyURLFromAPIKeyConfig(cfg *config.Config, auth *coreauth.Auth) string {
 		if entry := resolveAPIKeyConfig(cfg.CodexKey, auth); entry != nil {
 			return strings.TrimSpace(entry.ProxyURL)
 		}
+		// Bundled codex api-key-entries share one config entry; match inner keys
+		// when the flat lookup misses. Narrow candidates with the auth's
+		// config_index, prefix, proxy, and base_url before trusting a bare key
+		// match, and honor the bundled key's own proxy-url override.
+		var attrKey, attrBase string
 		if auth != nil && auth.Attributes != nil {
-			if attrKey := strings.TrimSpace(auth.Attributes["api_key"]); attrKey != "" {
-				for i := range cfg.CodexKey {
-					for _, bundled := range cfg.CodexKey[i].APIKeyEntries {
-						if strings.EqualFold(strings.TrimSpace(bundled.APIKey), attrKey) {
-							return strings.TrimSpace(cfg.CodexKey[i].ProxyURL)
+			attrKey = strings.TrimSpace(auth.Attributes["api_key"])
+			attrBase = strings.TrimSpace(auth.Attributes["base_url"])
+		}
+		if attrKey == "" {
+			return ""
+		}
+		matchesBundled := func(entry *config.CodexKey, bundled config.OpenAICompatibilityAPIKey) bool {
+			if !strings.EqualFold(strings.TrimSpace(bundled.APIKey), attrKey) {
+				return false
+			}
+			if auth != nil {
+				if !strings.EqualFold(strings.TrimSpace(entry.Prefix), strings.TrimSpace(auth.Prefix)) {
+					return false
+				}
+				if !strings.EqualFold(strings.TrimSpace(entry.ProxyURL), strings.TrimSpace(auth.ProxyURL)) {
+					return false
+				}
+			}
+			if attrBase != "" {
+				cfgBase := strings.TrimSpace(entry.BaseURL)
+				if cfgBase != "" && !strings.EqualFold(cfgBase, attrBase) {
+					return false
+				}
+			}
+			return true
+		}
+		if auth != nil && auth.AuthSourceKind() == coreauth.AuthSourceConfig && auth.Attributes != nil {
+			if index, errIndex := strconv.Atoi(strings.TrimSpace(auth.Attributes[coreauth.AttributeConfigIndex])); errIndex == nil && index >= 0 && index < len(cfg.CodexKey) {
+				entry := &cfg.CodexKey[index]
+				for _, bundled := range entry.APIKeyEntries {
+					if matchesBundled(entry, bundled) {
+						if strings.TrimSpace(bundled.ProxyURL) != "" {
+							return strings.TrimSpace(bundled.ProxyURL)
 						}
+						return strings.TrimSpace(entry.ProxyURL)
 					}
 				}
 			}
 		}
+		for i := range cfg.CodexKey {
+			entry := &cfg.CodexKey[i]
+			for _, bundled := range entry.APIKeyEntries {
+				if matchesBundled(entry, bundled) {
+					if strings.TrimSpace(bundled.ProxyURL) != "" {
+						return strings.TrimSpace(bundled.ProxyURL)
+					}
+					return strings.TrimSpace(entry.ProxyURL)
+				}
+			}
+		}
+		return ""
 	case "xai":
 		if entry := resolveAPIKeyConfig(cfg.XAIKey, auth); entry != nil {
 			return strings.TrimSpace(entry.ProxyURL)

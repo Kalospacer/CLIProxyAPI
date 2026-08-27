@@ -20,12 +20,18 @@ type claudeKeyWithAuthIndex struct {
 
 type codexKeyWithAuthIndex struct {
 	config.CodexKey
-	AuthIndex string `json:"auth-index,omitempty"`
+	// APIKeyEntries shadows the embedded field so each bundled credential can
+	// carry its own live auth index, mirroring the openai-compatibility view.
+	APIKeyEntries []openAICompatibilityAPIKeyWithAuthIndex `json:"api-key-entries,omitempty"`
+	AuthIndex     string                                   `json:"auth-index,omitempty"`
 }
 
 type xaiKeyWithAuthIndex struct {
 	config.XAIKey
-	AuthIndex string `json:"auth-index,omitempty"`
+	// APIKeyEntries shadows the embedded field so each bundled credential can
+	// carry its own live auth index, mirroring the openai-compatibility view.
+	APIKeyEntries []openAICompatibilityAPIKeyWithAuthIndex `json:"api-key-entries,omitempty"`
+	AuthIndex     string                                   `json:"auth-index,omitempty"`
 }
 
 type vertexCompatKeyWithAuthIndex struct {
@@ -210,9 +216,32 @@ func (h *Handler) codexKeysWithAuthIndex() []codexKeyWithAuthIndex {
 			id, _ := idGen.Next("codex:apikey", key, base, proxyURL, prefix, config.FormatSortedHeaders(entry.Headers))
 			authIndex = liveIndexByID[id]
 		}
+		// Bundled api-key-entries synthesize one auth per key; expose each
+		// bundled credential's live auth index like the openai-compatibility
+		// view does.
+		bundledEntries := make([]openAICompatibilityAPIKeyWithAuthIndex, len(entry.APIKeyEntries))
+		for j := range entry.APIKeyEntries {
+			bundled := entry.APIKeyEntries[j]
+			bundledIndex := ""
+			bundledKey := strings.TrimSpace(bundled.APIKey)
+			bundledProxy := strings.TrimSpace(bundled.ProxyURL)
+			if bundledKey != "" {
+				credProxy := proxyURL
+				if bundledProxy != "" {
+					credProxy = bundledProxy
+				}
+				id, _ := idGen.Next("codex:apikey", bundledKey, base, credProxy, prefix, config.FormatSortedHeaders(entry.Headers))
+				bundledIndex = liveIndexByID[id]
+			}
+			bundledEntries[j] = openAICompatibilityAPIKeyWithAuthIndex{
+				OpenAICompatibilityAPIKey: bundled,
+				AuthIndex:                 bundledIndex,
+			}
+		}
 		out[i] = codexKeyWithAuthIndex{
-			CodexKey:  entry,
-			AuthIndex: authIndex,
+			CodexKey:      entry,
+			AuthIndex:     authIndex,
+			APIKeyEntries: bundledEntries,
 		}
 	}
 	return out
@@ -243,9 +272,19 @@ func (h *Handler) xaiKeysWithAuthIndex() []xaiKeyWithAuthIndex {
 			id, _ := idGen.Next("xai:apikey", key, base, proxyURL, prefix, config.FormatSortedHeaders(entry.Headers))
 			authIndex = liveIndexByID[id]
 		}
+		// Bundled xai api-key-entries are not synthesized into auths (the xAI
+		// resolver only matches the top-level APIKey), so they carry no auth
+		// index; keep them visible so the view still reflects the config.
+		bundledEntries := make([]openAICompatibilityAPIKeyWithAuthIndex, len(entry.APIKeyEntries))
+		for j := range entry.APIKeyEntries {
+			bundledEntries[j] = openAICompatibilityAPIKeyWithAuthIndex{
+				OpenAICompatibilityAPIKey: entry.APIKeyEntries[j],
+			}
+		}
 		out[i] = xaiKeyWithAuthIndex{
-			XAIKey:    entry,
-			AuthIndex: authIndex,
+			XAIKey:        entry,
+			AuthIndex:     authIndex,
+			APIKeyEntries: bundledEntries,
 		}
 	}
 	return out

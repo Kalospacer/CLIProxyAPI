@@ -1410,6 +1410,12 @@ func (h *Handler) PutCodexKeys(c *gin.Context) {
 		if rejectInvalidCredentialWeight(c, fmt.Sprintf("codex-api-key[%d].weight", i), entry.Weight) {
 			return
 		}
+		for keyIndex := range entry.APIKeyEntries {
+			field := fmt.Sprintf("codex-api-key[%d].api-key-entries[%d].weight", i, keyIndex)
+			if rejectInvalidCredentialWeight(c, field, entry.APIKeyEntries[keyIndex].Weight) {
+				return
+			}
+		}
 		filtered = append(filtered, entry)
 	}
 	h.mu.Lock()
@@ -1602,6 +1608,12 @@ func (h *Handler) PutXAIKeys(c *gin.Context) {
 		}
 		if rejectInvalidCredentialWeight(c, fmt.Sprintf("xai-api-key[%d].weight", i), entry.Weight) {
 			return
+		}
+		for keyIndex := range entry.APIKeyEntries {
+			field := fmt.Sprintf("xai-api-key[%d].api-key-entries[%d].weight", i, keyIndex)
+			if rejectInvalidCredentialWeight(c, field, entry.APIKeyEntries[keyIndex].Weight) {
+				return
+			}
 		}
 		filtered = append(filtered, entry)
 	}
