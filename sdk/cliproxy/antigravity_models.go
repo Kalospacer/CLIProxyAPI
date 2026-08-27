@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/misc"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/proxyutil"
 	log "github.com/sirupsen/logrus"
@@ -41,6 +42,7 @@ func (s *Service) fetchAntigravityModelCapabilityHintsForAuth(ctx context.Contex
 	if transport, _, errProxy := proxyutil.BuildHTTPTransport(s.antigravityModelFetchProxyURL(auth)); errProxy == nil && transport != nil {
 		client.Transport = transport
 	}
+	util.WrapGoogleRewriteClient(client)
 
 	for _, baseURL := range antigravityModelBaseURLs(auth) {
 		req, errReq := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+antigravityModelsPath, strings.NewReader(`{}`))

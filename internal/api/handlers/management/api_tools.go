@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/proxyutil"
 	log "github.com/sirupsen/logrus"
@@ -188,6 +189,7 @@ func (h *Handler) APICall(c *gin.Context) {
 		Timeout: defaultAPICallTimeout,
 	}
 	httpClient.Transport = h.apiCallTransport(auth, requestProxyURL)
+	httpClient = util.WrapGoogleRewriteClient(httpClient)
 
 	resp, errDo := httpClient.Do(req)
 	if errDo != nil {
@@ -294,9 +296,10 @@ func (h *Handler) refreshAntigravityOAuthAccessToken(ctx context.Context, auth *
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	httpClient := &http.Client{
-		Timeout:   defaultAPICallTimeout,
-		Transport: h.apiCallTransport(auth, requestProxyURL),
+		Timeout: defaultAPICallTimeout,
 	}
+	httpClient.Transport = h.apiCallTransport(auth, requestProxyURL)
+	httpClient = util.WrapGoogleRewriteClient(httpClient)
 	resp, errDo := httpClient.Do(req)
 	if errDo != nil {
 		return "", errDo

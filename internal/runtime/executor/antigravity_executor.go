@@ -294,7 +294,7 @@ func newAntigravityHTTPClient(ctx context.Context, cfg *config.Config, auth *cli
 	// existing lifecycle and different OAuth identities remain isolated.
 	if proxyURL := antigravityProxyURL(cfg, auth); proxyURL != "" {
 		if transport := antigravityProxiedHTTP11Transport(auth, proxyURL); transport != nil {
-			return &http.Client{Transport: transport, Timeout: timeout}
+			return &http.Client{Transport: util.WrapGoogleRewrite(transport), Timeout: timeout}
 		}
 		// Fall through so NewProxyAwareHTTPClient reports the failure and applies the
 		// context transport fallback, preserving the previous behavior.
@@ -302,16 +302,18 @@ func newAntigravityHTTPClient(ctx context.Context, cfg *config.Config, auth *cli
 
 	client := helps.NewProxyAwareHTTPClient(ctx, cfg, auth, timeout)
 	// Direct requests share an HTTP/1.1 pool only within the selected credential.
-	if client.Transport == nil {
-		client.Transport = antigravityHTTP11Transport(auth, antigravityBaseTransport)
+	// Strip any Google rewrite layer first so the HTTP/1.1 fingerprint handling
+	// below keeps working, then re-wrap the final transport.
+	inner := util.UnwrapGoogleRewrite(client.Transport)
+	if inner == nil {
+		client.Transport = util.WrapGoogleRewrite(antigravityHTTP11Transport(auth, antigravityBaseTransport))
 		return client
 	}
 
-	// Preserve a context-provided transport while forcing HTTP/1.1. The cache key
-	// includes credential identity, so sharing the base does not share TLS pools.
-	transport, ok := client.Transport.(*http.Transport)
+	transport, ok := inner.(*http.Transport)
 	if !ok {
 		// A RoundTripper that is not an *http.Transport owns its own protocol behavior.
+		client.Transport = util.WrapGoogleRewrite(inner)
 		return client
 	}
 	if transport == nil {
@@ -321,7 +323,7 @@ func newAntigravityHTTPClient(ctx context.Context, cfg *config.Config, auth *cli
 		// Antigravity fingerprint, so substitute the process base transport.
 		transport = antigravityBaseTransport
 	}
-	client.Transport = antigravityHTTP11Transport(auth, transport)
+	client.Transport = util.WrapGoogleRewrite(antigravityHTTP11Transport(auth, transport))
 	return client
 }
 
