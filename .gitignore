@@ -66,3 +66,6 @@ docker-compose.override.yml
 
 # Local LLM Wiki vault
 .llm-wiki
+
+cliproxy-*-linux-amd64
+test-build.exe

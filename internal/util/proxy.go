@@ -26,5 +26,5 @@ func SetProxy(cfg *config.SDKConfig, httpClient *http.Client) *http.Client {
 	if transport != nil {
 		httpClient.Transport = transport
 	}
-	return httpClient
+	return WrapGoogleRewriteClient(httpClient)
 }
