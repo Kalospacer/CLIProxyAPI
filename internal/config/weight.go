@@ -32,11 +32,14 @@ func validateCredentialWeightYAML(data []byte) error {
 		"gemini-api-key": {}, "interactions-api-key": {}, "claude-api-key": {},
 		"vertex-api-key": {}, "codex-api-key": {}, "xai-api-key": {},
 	}
+	// Only codex/xai entries support bundled api-key-entries credentials.
+	bundledFamilies := map[string]struct{}{"codex-api-key": {}, "xai-api-key": {}}
 	for index := 0; root != nil && root.Kind == yaml.MappingNode && index+1 < len(root.Content); index += 2 {
 		name := root.Content[index].Value
 		value := root.Content[index+1]
 		if _, ok := families[name]; ok {
-			if errValidate := validateWeightSequenceNode(value, name); errValidate != nil {
+			_, allowBundled := bundledFamilies[name]
+			if errValidate := validateWeightSequenceNode(value, name, allowBundled); errValidate != nil {
 				return errValidate
 			}
 			continue
@@ -50,24 +53,32 @@ func validateCredentialWeightYAML(data []byte) error {
 	return nil
 }
 
-func validateWeightSequenceNode(sequence *yaml.Node, path string) error {
+func validateWeightSequenceNode(sequence *yaml.Node, path string, allowBundled bool) error {
 	if sequence == nil || sequence.Kind != yaml.SequenceNode {
 		return nil
 	}
 	for index, item := range sequence.Content {
-		if errValidate := validateWeightMappingNode(item, fmt.Sprintf("%s[%d]", path, index)); errValidate != nil {
+		if errValidate := validateWeightMappingNode(item, fmt.Sprintf("%s[%d]", path, index), allowBundled); errValidate != nil {
 			return errValidate
 		}
 	}
 	return nil
 }
 
-func validateWeightMappingNode(mapping *yaml.Node, path string) error {
+func validateWeightMappingNode(mapping *yaml.Node, path string, allowBundled bool) error {
 	if mapping == nil || mapping.Kind != yaml.MappingNode {
 		return nil
 	}
 	for index := 0; index+1 < len(mapping.Content); index += 2 {
-		if mapping.Content[index].Value != "weight" {
+		name := mapping.Content[index].Value
+		if allowBundled && name == "api-key-entries" {
+			path := fmt.Sprintf("%s.api-key-entries", path)
+			if errValidate := validateWeightSequenceNode(mapping.Content[index+1], path, allowBundled); errValidate != nil {
+				return errValidate
+			}
+			continue
+		}
+		if name != "weight" {
 			continue
 		}
 		value := mapping.Content[index+1]
@@ -98,7 +109,7 @@ func validateOpenAICompatibilityWeightNodes(sequence *yaml.Node) error {
 				continue
 			}
 			path := fmt.Sprintf("openai-compatibility[%d].api-key-entries", providerIndex)
-			if errValidate := validateWeightSequenceNode(provider.Content[index+1], path); errValidate != nil {
+			if errValidate := validateWeightSequenceNode(provider.Content[index+1], path, false); errValidate != nil {
 				return errValidate
 			}
 		}
@@ -135,10 +146,22 @@ func (cfg *Config) ValidateCredentialWeights() error {
 		if errValidate := ValidateCredentialWeight(cfg.CodexKey[index].Weight); errValidate != nil {
 			return fmt.Errorf("codex-api-key[%d].weight: %w", index, errValidate)
 		}
+		for keyIndex := range cfg.CodexKey[index].APIKeyEntries {
+			weight := cfg.CodexKey[index].APIKeyEntries[keyIndex].Weight
+			if errValidate := ValidateCredentialWeight(weight); errValidate != nil {
+				return fmt.Errorf("codex-api-key[%d].api-key-entries[%d].weight: %w", index, keyIndex, errValidate)
+			}
+		}
 	}
 	for index := range cfg.XAIKey {
 		if errValidate := ValidateCredentialWeight(cfg.XAIKey[index].Weight); errValidate != nil {
 			return fmt.Errorf("xai-api-key[%d].weight: %w", index, errValidate)
+		}
+		for keyIndex := range cfg.XAIKey[index].APIKeyEntries {
+			weight := cfg.XAIKey[index].APIKeyEntries[keyIndex].Weight
+			if errValidate := ValidateCredentialWeight(weight); errValidate != nil {
+				return fmt.Errorf("xai-api-key[%d].api-key-entries[%d].weight: %w", index, keyIndex, errValidate)
+			}
 		}
 	}
 	for providerIndex := range cfg.OpenAICompatibility {
