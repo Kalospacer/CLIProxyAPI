@@ -61,7 +61,7 @@ func ConvertOpenAIRequestToCodex(modelName string, inputRawJSON []byte, stream b
 	if v := gjson.GetBytes(rawJSON, "reasoning_effort"); v.Exists() {
 		out, _ = sjson.SetBytes(out, "reasoning.effort", v.Value())
 	} else {
-		out, _ = sjson.SetBytes(out, "reasoning.effort", "medium")
+		out, _ = sjson.SetBytes(out, "reasoning.effort", translatorcommon.DefaultCodexReasoningEffort(modelName))
 	}
 	out, _ = sjson.SetBytes(out, "parallel_tool_calls", true)
 	// OpenAI documents reasoning summaries as explicit opt-in output. Leave

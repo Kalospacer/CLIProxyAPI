@@ -392,7 +392,7 @@ func convertClaudeRequestToCodex(modelName string, inputRawJSON []byte, _ bool, 
 	template, _ = sjson.SetBytes(template, "parallel_tool_calls", parallelToolCalls)
 
 	// Convert thinking.budget_tokens to reasoning.effort.
-	reasoningEffort := "medium"
+	reasoningEffort := translatorcommon.DefaultCodexReasoningEffort(modelName)
 	if thinkingConfig := rootResult.Get("thinking"); thinkingConfig.Exists() && thinkingConfig.IsObject() {
 		switch thinkingConfig.Get("type").String() {
 		case "enabled":
