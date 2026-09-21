@@ -311,6 +311,8 @@ func (s *Service) registerExecutorForAuth(a *coreauth.Auth, forceReplace bool) {
 		s.coreManager.RegisterExecutor(executor.NewDevinExecutor(cfg))
 	case "meta":
 		s.coreManager.RegisterExecutor(executor.NewMetaExecutor(cfg))
+	case "typesafe":
+		s.coreManager.RegisterExecutor(executor.NewTypeSafeExecutor(cfg))
 	default:
 		providerKey := strings.ToLower(strings.TrimSpace(a.Provider))
 		if providerKey == "" {

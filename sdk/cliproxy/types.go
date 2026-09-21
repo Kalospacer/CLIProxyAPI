@@ -71,6 +71,9 @@ type APIKeyClientResult struct {
 	// MetaKeyCount is the number of Meta API keys loaded
 	MetaKeyCount int
 
+	// TypeSafeKeyCount is the number of TypeSafe AI API keys loaded
+	TypeSafeKeyCount int
+
 	// OpenAICompatCount is the number of OpenAI compatibility API keys loaded
 	OpenAICompatCount int
 }

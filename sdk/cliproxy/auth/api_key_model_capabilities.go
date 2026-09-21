@@ -206,6 +206,10 @@ func compileAPIKeyModelCapabilitiesForAuth(cfg *internalconfig.Config, auth *Aut
 		if entry := resolveMetaAPIKeyConfig(cfg, auth); entry != nil {
 			compileConfiguredModelCapabilities(out, entry.Models, "meta")
 		}
+	case "typesafe":
+		if entry := resolveTypeSafeAPIKeyConfig(cfg, auth); entry != nil {
+			compileConfiguredModelCapabilities(out, entry.Models, "typesafe")
+		}
 	default:
 		providerKey, compatName := "", ""
 		if auth.Attributes != nil {

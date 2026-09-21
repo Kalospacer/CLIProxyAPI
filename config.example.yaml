@@ -585,6 +585,23 @@ nonstream-keepalive-interval: 0
 #         alias: "muse-latest"   # client alias mapped to the upstream model
 #     excluded-models:
 #       - "muse-spark-1.1"
+#
+# TypeSafe AI API keys (jev evaluation protocol)
+# Serves the dedicated passthrough endpoint POST /v1/systemone (body {state, model, questions}).
+# Credentials rotate automatically on 401/429/5xx; request-scoped 4xx (e.g. 422) are returned as-is.
+# typesafe-api-key:
+#   - api-key: "..."
+#     weight: 5 # optional: weighted-round-robin share; omitted defaults to 1; maximum 1,000,000
+#     prefix: "typesafe" # optional: require calls like "typesafe/jev-latest" to target this credential
+#     disable-cooling: false # optional override: true disables cooling, false enables it; omit to inherit global
+#     request-retry: 3 # optional per-auth override; 0 disables additional rounds; omit or set < 0 to inherit global
+#     base-url: "https://api.typesafe.ai" # optional: defaults to https://api.typesafe.ai
+#     proxy-url: "socks5://proxy.example.com:1080" # optional: per-key proxy override
+#     models:
+#       - name: "jev-latest"     # upstream model name (empty models defaults to jev-latest)
+#         alias: "jev-latest"    # client alias mapped to the upstream model
+#     excluded-models:
+#       - "jev-experimental"
 
 # Claude API keys
 # claude-api-key:
@@ -816,7 +833,7 @@ nonstream-keepalive-interval: 0
 # Global OAuth model name aliases (per channel)
 # These aliases rename model IDs for both model listing and request routing.
 # Supported channels: vertex, aistudio, antigravity, claude, codex, kimi, xai, meta.
-# NOTE: Aliases do not apply to gemini-api-key, interactions-api-key, codex-api-key, xai-api-key, meta-api-key, claude-api-key, openai-compatibility, or vertex-api-key.
+# NOTE: Aliases do not apply to gemini-api-key, interactions-api-key, codex-api-key, xai-api-key, meta-api-key, typesafe-api-key, claude-api-key, openai-compatibility, or vertex-api-key.
 # NOTE: Because aliases affect the merged /v1 model list and merged request routing, overlapping
 # client-visible names can become ambiguous across providers. For strict backend pinning, use
 # unique aliases/prefixes or avoid overlapping names.

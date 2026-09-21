@@ -202,6 +202,41 @@ func (cfg *Config) SanitizeMetaKeys() {
 	cfg.MetaKey = sanitizeMetaKeyEntries(cfg.MetaKey)
 }
 
+// SanitizeTypeSafeKeys normalizes TypeSafe AI API key entries,
+// defaulting BaseURL to https://api.typesafe.ai if empty.
+func (cfg *Config) SanitizeTypeSafeKeys() {
+	if cfg == nil {
+		return
+	}
+	cfg.TypeSafeKey = sanitizeTypeSafeKeyEntries(cfg.TypeSafeKey)
+}
+
+func sanitizeTypeSafeKeyEntries(entries []TypeSafeKey) []TypeSafeKey {
+	if len(entries) == 0 {
+		return entries
+	}
+	out := make([]TypeSafeKey, 0, len(entries))
+	for i := range entries {
+		e := entries[i]
+		e.APIKey = strings.TrimSpace(e.APIKey)
+		// typesafe-api-key requires a valid API key (Bearer token for api.typesafe.ai).
+		if e.APIKey == "" {
+			continue
+		}
+		e.Prefix = normalizeModelPrefix(e.Prefix)
+		e.BaseURL = strings.TrimSpace(e.BaseURL)
+		if e.BaseURL == "" {
+			e.BaseURL = "https://api.typesafe.ai"
+		}
+		e.Headers = NormalizeHeaders(e.Headers)
+		e.ExcludedModels = NormalizeExcludedModels(e.ExcludedModels)
+		e.AlphaSearch = false
+		e.Websockets = false
+		out = append(out, e)
+	}
+	return out
+}
+
 func sanitizeMetaKeyEntries(entries []MetaKey) []MetaKey {
 	if len(entries) == 0 {
 		return entries
@@ -451,4 +486,3 @@ func NormalizeOAuthExcludedModels(entries map[string][]string) map[string][]stri
 	}
 	return out
 }
-

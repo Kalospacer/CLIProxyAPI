@@ -5,12 +5,18 @@ import "strings"
 const (
 	// CredentialPolicyCodexAlphaSearchV1 selects credentials supported by Codex Alpha Search.
 	CredentialPolicyCodexAlphaSearchV1 = "codex_alpha_search_v1"
+
+	// CredentialPolicyTypeSafeSystemOneV1 selects credentials supported by the TypeSafe
+	// jev evaluation protocol (/v1/systemone).
+	CredentialPolicyTypeSafeSystemOneV1 = "typesafe_systemone_v1"
 )
 
 func normalizeCredentialPolicy(policy string) string {
 	switch strings.ToLower(strings.TrimSpace(policy)) {
 	case CredentialPolicyCodexAlphaSearchV1:
 		return CredentialPolicyCodexAlphaSearchV1
+	case CredentialPolicyTypeSafeSystemOneV1:
+		return CredentialPolicyTypeSafeSystemOneV1
 	default:
 		return ""
 	}
@@ -33,6 +39,11 @@ func credentialPolicyAllows(policy string, auth *Auth) bool {
 		default:
 			return false
 		}
+	case CredentialPolicyTypeSafeSystemOneV1:
+		if !strings.EqualFold(strings.TrimSpace(auth.Provider), "typesafe") {
+			return false
+		}
+		return auth.AuthKind() == AuthKindAPIKey
 	default:
 		return false
 	}

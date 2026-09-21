@@ -694,6 +694,12 @@ type MetaKey = CodexKey
 // MetaModel uses the Codex model mapping structure for Meta Muse models.
 type MetaModel = CodexModel
 
+// TypeSafeKey uses the Codex API key structure for TypeSafe AI (jev evaluation protocol).
+type TypeSafeKey = CodexKey
+
+// TypeSafeModel uses the Codex model mapping structure for TypeSafe AI models.
+type TypeSafeModel = CodexModel
+
 // GeminiKey represents the configuration for a Gemini API key,
 // including optional overrides for upstream base URL, proxy routing, and headers.
 type GeminiKey struct {

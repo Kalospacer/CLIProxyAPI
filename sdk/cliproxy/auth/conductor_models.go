@@ -476,6 +476,10 @@ func configuredModelAliasEntries(cfg *internalconfig.Config, auth *Auth) []model
 		if entry := resolveMetaAPIKeyConfig(cfg, auth); entry != nil {
 			models = asModelAliasEntries(entry.Models)
 		}
+	case "typesafe":
+		if entry := resolveTypeSafeAPIKeyConfig(cfg, auth); entry != nil {
+			models = asModelAliasEntries(entry.Models)
+		}
 	default:
 		providerKey := ""
 		compatName := ""
@@ -634,6 +638,10 @@ func (m *Manager) rebuildAPIKeyModelAliasLocked(cfg *internalconfig.Config) {
 			}
 		case "meta":
 			if entry := resolveMetaAPIKeyConfig(cfg, auth); entry != nil {
+				compileAPIKeyModelAliasForModels(byAlias, entry.Models)
+			}
+		case "typesafe":
+			if entry := resolveTypeSafeAPIKeyConfig(cfg, auth); entry != nil {
 				compileAPIKeyModelAliasForModels(byAlias, entry.Models)
 			}
 		default:
@@ -923,6 +931,13 @@ func resolveMetaAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalco
 		return nil
 	}
 	return resolveAPIKeyConfig(cfg.MetaKey, auth)
+}
+
+func resolveTypeSafeAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalconfig.TypeSafeKey {
+	if cfg == nil {
+		return nil
+	}
+	return resolveAPIKeyConfig(cfg.TypeSafeKey, auth)
 }
 
 func resolveUpstreamModelForGeminiAPIKey(cfg *internalconfig.Config, auth *Auth, requestedModel string) string {

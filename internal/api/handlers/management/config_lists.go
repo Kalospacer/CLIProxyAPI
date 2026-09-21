@@ -1874,6 +1874,204 @@ func (h *Handler) DeleteXAIKey(c *gin.Context) {
 	c.JSON(400, gin.H{"error": "missing api-key or index"})
 }
 
+// typesafe-api-key: []TypeSafeKey
+func (h *Handler) GetTypeSafeKeys(c *gin.Context) {
+	c.JSON(200, gin.H{"typesafe-api-key": h.typeSafeKeysWithAuthIndex()})
+}
+
+func (h *Handler) PutTypeSafeKeys(c *gin.Context) {
+	data, errRead := c.GetRawData()
+	if errRead != nil {
+		c.JSON(400, gin.H{"error": "failed to read body"})
+		return
+	}
+	var arr []config.TypeSafeKey
+	if errUnmarshal := json.Unmarshal(data, &arr); errUnmarshal != nil {
+		var obj struct {
+			Items []config.TypeSafeKey `json:"items"`
+		}
+		if errObject := json.Unmarshal(data, &obj); errObject != nil || len(obj.Items) == 0 {
+			c.JSON(400, gin.H{"error": "invalid body"})
+			return
+		}
+		arr = obj.Items
+	}
+	filtered := make([]config.TypeSafeKey, 0, len(arr))
+	for i := range arr {
+		entry := arr[i]
+		normalizeCodexKey(&entry)
+		if strings.TrimSpace(entry.APIKey) == "" {
+			continue
+		}
+		if rejectInvalidCredentialWeight(c, fmt.Sprintf("typesafe-api-key[%d].weight", i), entry.Weight) {
+			return
+		}
+		for keyIndex := range entry.APIKeyEntries {
+			field := fmt.Sprintf("typesafe-api-key[%d].api-key-entries[%d].weight", i, keyIndex)
+			if rejectInvalidCredentialWeight(c, field, entry.APIKeyEntries[keyIndex].Weight) {
+				return
+			}
+		}
+		filtered = append(filtered, entry)
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.cfg.TypeSafeKey = filtered
+	h.cfg.SanitizeTypeSafeKeys()
+	h.persistLocked(c)
+}
+
+func (h *Handler) PatchTypeSafeKey(c *gin.Context) {
+	type typeSafeKeyPatch struct {
+		APIKey              *string                          `json:"api-key"`
+		Priority            *int                             `json:"priority"`
+		Weight              json.RawMessage                  `json:"weight"`
+		Prefix              *string                          `json:"prefix"`
+		BaseURL             *string                          `json:"base-url"`
+		ProxyURL            *string                          `json:"proxy-url"`
+		Models              *[]config.TypeSafeModel          `json:"models"`
+		Headers             *map[string]string               `json:"headers"`
+		ExcludedModels      *[]string                        `json:"excluded-models"`
+		DisableCooling      json.RawMessage                  `json:"disable-cooling"`
+		RequestRetry        *int                             `json:"request-retry"`
+		RequestScopedErrors *[]config.RequestScopedErrorRule `json:"request-scoped-errors"`
+	}
+	var body struct {
+		Index *int              `json:"index"`
+		Match *string           `json:"match"`
+		Value *typeSafeKeyPatch `json:"value"`
+	}
+	if errBind := c.ShouldBindJSON(&body); errBind != nil || body.Value == nil {
+		c.JSON(400, gin.H{"error": "invalid body"})
+		return
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	targetIndex := -1
+	if body.Index != nil && *body.Index >= 0 && *body.Index < len(h.cfg.TypeSafeKey) {
+		targetIndex = *body.Index
+	}
+	if targetIndex == -1 && body.Match != nil {
+		match := strings.TrimSpace(*body.Match)
+		for i := range h.cfg.TypeSafeKey {
+			if h.cfg.TypeSafeKey[i].APIKey == match {
+				targetIndex = i
+				break
+			}
+		}
+	}
+	if targetIndex == -1 {
+		c.JSON(404, gin.H{"error": "item not found"})
+		return
+	}
+
+	entry := h.cfg.TypeSafeKey[targetIndex]
+	if body.Value.APIKey != nil {
+		entry.APIKey = strings.TrimSpace(*body.Value.APIKey)
+	}
+	if body.Value.Priority != nil {
+		entry.Priority = *body.Value.Priority
+	}
+	if len(body.Value.Weight) > 0 {
+		weight, errWeight := parseCredentialWeightPatch(body.Value.Weight)
+		if errWeight != nil {
+			c.JSON(400, gin.H{"error": errWeight.Error()})
+			return
+		}
+		entry.Weight = weight
+	}
+	if body.Value.Prefix != nil {
+		entry.Prefix = strings.TrimSpace(*body.Value.Prefix)
+	}
+	if body.Value.BaseURL != nil {
+		entry.BaseURL = strings.TrimSpace(*body.Value.BaseURL)
+	}
+	if body.Value.ProxyURL != nil {
+		entry.ProxyURL = strings.TrimSpace(*body.Value.ProxyURL)
+	}
+	if body.Value.Models != nil {
+		entry.Models = append([]config.TypeSafeModel(nil), (*body.Value.Models)...)
+	}
+	if body.Value.Headers != nil {
+		entry.Headers = config.NormalizeHeaders(*body.Value.Headers)
+	}
+	if body.Value.ExcludedModels != nil {
+		entry.ExcludedModels = config.NormalizeExcludedModels(*body.Value.ExcludedModels)
+	}
+	if !applyDisableCoolingPatch(c, body.Value.DisableCooling, &entry.DisableCooling) {
+		return
+	}
+	if body.Value.RequestRetry != nil {
+		entry.RequestRetry = body.Value.RequestRetry
+	}
+	if body.Value.RequestScopedErrors != nil {
+		entry.RequestScopedErrors = append([]config.RequestScopedErrorRule(nil), *body.Value.RequestScopedErrors...)
+	}
+	normalizeCodexKey(&entry)
+	if strings.TrimSpace(entry.APIKey) == "" {
+		// Empty api-key deletes the entry, mirroring sanitize rules.
+		h.cfg.TypeSafeKey = append(h.cfg.TypeSafeKey[:targetIndex], h.cfg.TypeSafeKey[targetIndex+1:]...)
+	} else {
+		h.cfg.TypeSafeKey[targetIndex] = entry
+	}
+	h.cfg.SanitizeTypeSafeKeys()
+	h.persistLocked(c)
+}
+
+func (h *Handler) DeleteTypeSafeKey(c *gin.Context) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if val := strings.TrimSpace(c.Query("api-key")); val != "" {
+		if baseRaw, okBase := c.GetQuery("base-url"); okBase {
+			base := strings.TrimSpace(baseRaw)
+			out := make([]config.TypeSafeKey, 0, len(h.cfg.TypeSafeKey))
+			for _, entry := range h.cfg.TypeSafeKey {
+				if strings.TrimSpace(entry.APIKey) == val && strings.TrimSpace(entry.BaseURL) == base {
+					continue
+				}
+				out = append(out, entry)
+			}
+			h.cfg.TypeSafeKey = out
+			h.cfg.SanitizeTypeSafeKeys()
+			h.persistLocked(c)
+			return
+		}
+
+		matchIndex := -1
+		matchCount := 0
+		for i := range h.cfg.TypeSafeKey {
+			if strings.TrimSpace(h.cfg.TypeSafeKey[i].APIKey) == val {
+				matchCount++
+				if matchIndex == -1 {
+					matchIndex = i
+				}
+			}
+		}
+		if matchCount > 1 {
+			c.JSON(400, gin.H{"error": "multiple items match api-key; base-url is required"})
+			return
+		}
+		if matchIndex != -1 {
+			h.cfg.TypeSafeKey = append(h.cfg.TypeSafeKey[:matchIndex], h.cfg.TypeSafeKey[matchIndex+1:]...)
+		}
+		h.cfg.SanitizeTypeSafeKeys()
+		h.persistLocked(c)
+		return
+	}
+	if idxStr := c.Query("index"); idxStr != "" {
+		var idx int
+		_, errScan := fmt.Sscanf(idxStr, "%d", &idx)
+		if errScan == nil && idx >= 0 && idx < len(h.cfg.TypeSafeKey) {
+			h.cfg.TypeSafeKey = append(h.cfg.TypeSafeKey[:idx], h.cfg.TypeSafeKey[idx+1:]...)
+			h.cfg.SanitizeTypeSafeKeys()
+			h.persistLocked(c)
+			return
+		}
+	}
+	c.JSON(400, gin.H{"error": "missing api-key or index"})
+}
+
 // meta-api-key: []MetaKey
 func (h *Handler) GetMetaKeys(c *gin.Context) {
 	c.JSON(200, gin.H{"meta-api-key": h.metaKeysWithAuthIndex()})

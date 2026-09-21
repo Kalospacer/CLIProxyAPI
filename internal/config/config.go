@@ -129,6 +129,10 @@ type Config struct {
 	// MetaKey defines Meta API key configurations using the same structure as Codex API keys.
 	MetaKey []MetaKey `yaml:"meta-api-key" json:"meta-api-key"`
 
+	// TypeSafeKey defines TypeSafe AI (jev evaluation protocol) API key configurations
+	// using the same structure as Codex API keys.
+	TypeSafeKey []TypeSafeKey `yaml:"typesafe-api-key" json:"typesafe-api-key"`
+
 	// XAI configures provider-wide xAI request behavior.
 	XAI XAIConfig `yaml:"xai" json:"xai"`
 

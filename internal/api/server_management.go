@@ -151,6 +151,11 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.PATCH("/meta-api-key", s.mgmt.PatchMetaKey)
 		mgmt.DELETE("/meta-api-key", s.mgmt.DeleteMetaKey)
 
+		mgmt.GET("/typesafe-api-key", s.mgmt.GetTypeSafeKeys)
+		mgmt.PUT("/typesafe-api-key", s.mgmt.PutTypeSafeKeys)
+		mgmt.PATCH("/typesafe-api-key", s.mgmt.PatchTypeSafeKey)
+		mgmt.DELETE("/typesafe-api-key", s.mgmt.DeleteTypeSafeKey)
+
 		mgmt.GET("/openai-compatibility", s.mgmt.GetOpenAICompat)
 		mgmt.PUT("/openai-compatibility", s.mgmt.PutOpenAICompat)
 		mgmt.PATCH("/openai-compatibility", s.mgmt.PatchOpenAICompat)
