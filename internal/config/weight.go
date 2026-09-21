@@ -30,7 +30,7 @@ func validateCredentialWeightYAML(data []byte) error {
 	root := document.Content[0]
 	families := map[string]struct{}{
 		"gemini-api-key": {}, "interactions-api-key": {}, "claude-api-key": {},
-		"vertex-api-key": {}, "codex-api-key": {}, "xai-api-key": {},
+		"vertex-api-key": {}, "codex-api-key": {}, "xai-api-key": {}, "meta-api-key": {},
 	}
 	// Only codex/xai entries support bundled api-key-entries credentials.
 	bundledFamilies := map[string]struct{}{"codex-api-key": {}, "xai-api-key": {}}
@@ -162,6 +162,11 @@ func (cfg *Config) ValidateCredentialWeights() error {
 			if errValidate := ValidateCredentialWeight(weight); errValidate != nil {
 				return fmt.Errorf("xai-api-key[%d].api-key-entries[%d].weight: %w", index, keyIndex, errValidate)
 			}
+		}
+	}
+	for index := range cfg.MetaKey {
+		if errValidate := ValidateCredentialWeight(cfg.MetaKey[index].Weight); errValidate != nil {
+			return fmt.Errorf("meta-api-key[%d].weight: %w", index, errValidate)
 		}
 	}
 	for providerIndex := range cfg.OpenAICompatibility {
