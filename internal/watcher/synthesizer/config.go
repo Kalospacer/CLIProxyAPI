@@ -240,11 +240,11 @@ func (s *ConfigSynthesizer) synthesizeCodexStyleKeys(ctx *SynthesisContext, entr
 		if key := strings.TrimSpace(entry.APIKey); key != "" {
 			creds = append(creds, codexCredential{key: key, weight: entry.Weight})
 		}
-		// Bundled api-key-entries are only resolved back to their config entry
-		// for codex; the xAI resolver matches the top-level APIKey only, so
-		// synthesizing xAI bundled keys would register auths whose model
-		// aliases and capabilities never resolve.
-		if provider == "codex" {
+		// Bundled api-key-entries are resolved back to their config entry for
+		// codex and typesafe only; the xAI resolver matches the top-level
+		// APIKey only, so synthesizing xAI bundled keys would register auths
+		// whose model aliases and capabilities never resolve.
+		if provider == "codex" || provider == "typesafe" {
 			for _, bundled := range entry.APIKeyEntries {
 				key := strings.TrimSpace(bundled.APIKey)
 				if key == "" {

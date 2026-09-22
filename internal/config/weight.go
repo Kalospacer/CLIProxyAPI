@@ -169,6 +169,17 @@ func (cfg *Config) ValidateCredentialWeights() error {
 			return fmt.Errorf("meta-api-key[%d].weight: %w", index, errValidate)
 		}
 	}
+	for index := range cfg.TypeSafeKey {
+		if errValidate := ValidateCredentialWeight(cfg.TypeSafeKey[index].Weight); errValidate != nil {
+			return fmt.Errorf("typesafe-api-key[%d].weight: %w", index, errValidate)
+		}
+		for keyIndex := range cfg.TypeSafeKey[index].APIKeyEntries {
+			weight := cfg.TypeSafeKey[index].APIKeyEntries[keyIndex].Weight
+			if errValidate := ValidateCredentialWeight(weight); errValidate != nil {
+				return fmt.Errorf("typesafe-api-key[%d].api-key-entries[%d].weight: %w", index, keyIndex, errValidate)
+			}
+		}
+	}
 	for providerIndex := range cfg.OpenAICompatibility {
 		for keyIndex := range cfg.OpenAICompatibility[providerIndex].APIKeyEntries {
 			weight := cfg.OpenAICompatibility[providerIndex].APIKeyEntries[keyIndex].Weight

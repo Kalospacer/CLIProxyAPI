@@ -219,8 +219,17 @@ func sanitizeTypeSafeKeyEntries(entries []TypeSafeKey) []TypeSafeKey {
 	for i := range entries {
 		e := entries[i]
 		e.APIKey = strings.TrimSpace(e.APIKey)
-		// typesafe-api-key requires a valid API key (Bearer token for api.typesafe.ai).
-		if e.APIKey == "" {
+		hasBundledKey := false
+		for j := range e.APIKeyEntries {
+			e.APIKeyEntries[j].APIKey = strings.TrimSpace(e.APIKeyEntries[j].APIKey)
+			if e.APIKeyEntries[j].APIKey != "" {
+				hasBundledKey = true
+			}
+		}
+		// typesafe-api-key requires a valid API key (Bearer token for
+		// api.typesafe.ai); bundled api-key-entries may carry the keys instead
+		// of the top-level api-key.
+		if e.APIKey == "" && !hasBundledKey {
 			continue
 		}
 		e.Prefix = normalizeModelPrefix(e.Prefix)

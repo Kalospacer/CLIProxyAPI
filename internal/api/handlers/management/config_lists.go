@@ -1900,7 +1900,15 @@ func (h *Handler) PutTypeSafeKeys(c *gin.Context) {
 	for i := range arr {
 		entry := arr[i]
 		normalizeCodexKey(&entry)
-		if strings.TrimSpace(entry.APIKey) == "" {
+		hasKey := strings.TrimSpace(entry.APIKey) != ""
+		for keyIndex := range entry.APIKeyEntries {
+			if strings.TrimSpace(entry.APIKeyEntries[keyIndex].APIKey) != "" {
+				hasKey = true
+				break
+			}
+		}
+		// Drop entries with no top-level api-key and no bundled keys (treated as removed).
+		if !hasKey {
 			continue
 		}
 		if rejectInvalidCredentialWeight(c, fmt.Sprintf("typesafe-api-key[%d].weight", i), entry.Weight) {

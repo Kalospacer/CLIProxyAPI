@@ -859,10 +859,15 @@ func resolveCodexAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalc
 	if entry := resolveAPIKeyConfig(cfg.CodexKey, auth); entry != nil {
 		return entry
 	}
-	// Bundled codex api-key-entries share one config entry; match inner keys when
-	// the flat lookup misses. Narrow candidates with the auth's config_index,
-	// prefix, proxy, and base_url before trusting a bare key match, so a key
-	// reused across entries cannot resolve to the wrong model mapping.
+	return resolveBundledCodexStyleAPIKeyConfig(cfg.CodexKey, auth)
+}
+
+// resolveBundledCodexStyleAPIKeyConfig matches bundled api-key-entries when the
+// flat lookup misses. Bundled keys share one config entry. Narrow candidates
+// with the auth's config_index, prefix, proxy, and base_url before trusting a
+// bare key match, so a key reused across entries cannot resolve to the wrong
+// model mapping.
+func resolveBundledCodexStyleAPIKeyConfig(entries []internalconfig.CodexKey, auth *Auth) *internalconfig.CodexKey {
 	var attrKey, attrBase string
 	if auth != nil && auth.Attributes != nil {
 		attrKey = strings.TrimSpace(auth.Attributes["api_key"])
@@ -892,8 +897,8 @@ func resolveCodexAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalc
 		return true
 	}
 	if auth != nil && auth.AuthSourceKind() == AuthSourceConfig && auth.Attributes != nil {
-		if index, errIndex := strconv.Atoi(strings.TrimSpace(auth.Attributes[AttributeConfigIndex])); errIndex == nil && index >= 0 && index < len(cfg.CodexKey) {
-			entry := &cfg.CodexKey[index]
+		if index, errIndex := strconv.Atoi(strings.TrimSpace(auth.Attributes[AttributeConfigIndex])); errIndex == nil && index >= 0 && index < len(entries) {
+			entry := &entries[index]
 			for _, bundled := range entry.APIKeyEntries {
 				if matchesBundled(entry, bundled) {
 					return entry
@@ -901,8 +906,8 @@ func resolveCodexAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalc
 			}
 		}
 	}
-	for i := range cfg.CodexKey {
-		entry := &cfg.CodexKey[i]
+	for i := range entries {
+		entry := &entries[i]
 		for _, bundled := range entry.APIKeyEntries {
 			if matchesBundled(entry, bundled) {
 				return entry
@@ -937,7 +942,10 @@ func resolveTypeSafeAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *intern
 	if cfg == nil {
 		return nil
 	}
-	return resolveAPIKeyConfig(cfg.TypeSafeKey, auth)
+	if entry := resolveAPIKeyConfig(cfg.TypeSafeKey, auth); entry != nil {
+		return entry
+	}
+	return resolveBundledCodexStyleAPIKeyConfig(cfg.TypeSafeKey, auth)
 }
 
 func resolveUpstreamModelForGeminiAPIKey(cfg *internalconfig.Config, auth *Auth, requestedModel string) string {
