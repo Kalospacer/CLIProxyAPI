@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/constant"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/watcher/diff"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/constant"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher/diff"
+	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 )
 
 // ConfigSynthesizer generates Auth entries from configuration API keys.
@@ -54,8 +54,6 @@ func (s *ConfigSynthesizer) Synthesize(ctx *SynthesisContext) ([]*coreauth.Auth,
 	out = append(out, s.synthesizeXAIKeys(ctx)...)
 	// Meta API Keys
 	out = append(out, s.synthesizeMetaKeys(ctx)...)
-	// TypeSafe AI API Keys
-	out = append(out, s.synthesizeTypeSafeKeys(ctx)...)
 	// OpenAI-compat
 	out = append(out, s.synthesizeOpenAICompat(ctx)...)
 	// Vertex-compat
@@ -218,112 +216,72 @@ func (s *ConfigSynthesizer) synthesizeMetaKeys(ctx *SynthesisContext) []*coreaut
 	return s.synthesizeCodexStyleKeys(ctx, ctx.Config.MetaKey, "meta")
 }
 
-// synthesizeTypeSafeKeys creates Auth entries for TypeSafe AI API keys.
-func (s *ConfigSynthesizer) synthesizeTypeSafeKeys(ctx *SynthesisContext) []*coreauth.Auth {
-	return s.synthesizeCodexStyleKeys(ctx, ctx.Config.TypeSafeKey, "typesafe")
-}
-
 func (s *ConfigSynthesizer) synthesizeCodexStyleKeys(ctx *SynthesisContext, entries []config.CodexKey, provider string) []*coreauth.Auth {
 	cfg := ctx.Config
 	now := ctx.Now
 	idGen := ctx.IDGenerator
 
-	type codexCredential struct {
-		key      string
-		weight   *int
-		proxyURL string
-	}
 	out := make([]*coreauth.Auth, 0, len(entries))
 	for i := range entries {
 		entry := entries[i]
-		var creds []codexCredential
-		if key := strings.TrimSpace(entry.APIKey); key != "" {
-			creds = append(creds, codexCredential{key: key, weight: entry.Weight})
-		}
-		// Bundled api-key-entries are resolved back to their config entry for
-		// codex and typesafe only; the xAI resolver matches the top-level
-		// APIKey only, so synthesizing xAI bundled keys would register auths
-		// whose model aliases and capabilities never resolve.
-		if provider == "codex" || provider == "typesafe" {
-			for _, bundled := range entry.APIKeyEntries {
-				key := strings.TrimSpace(bundled.APIKey)
-				if key == "" {
-					continue
-				}
-				cred := codexCredential{key: key, weight: entry.Weight}
-				if bundled.Weight != nil {
-					cred.weight = bundled.Weight
-				}
-				if strings.TrimSpace(bundled.ProxyURL) != "" {
-					cred.proxyURL = strings.TrimSpace(bundled.ProxyURL)
-				}
-				creds = append(creds, cred)
-			}
-		}
-		if len(creds) == 0 {
-			// No keys at all: keep upstream behavior of emitting one auth for a
-			// base-url-only entry, otherwise skip the entry entirely.
-			if strings.TrimSpace(entry.BaseURL) == "" {
-				continue
-			}
-			creds = append(creds, codexCredential{})
+		key := strings.TrimSpace(entry.APIKey)
+		baseURL := strings.TrimSpace(entry.BaseURL)
+		if key == "" && baseURL == "" {
+			continue
 		}
 		prefix := strings.TrimSpace(entry.Prefix)
-		baseURL := strings.TrimSpace(entry.BaseURL)
-		for _, cred := range creds {
-			proxyURL := strings.TrimSpace(entry.ProxyURL)
-			if cred.proxyURL != "" {
-				proxyURL = cred.proxyURL
-			}
-			id, token := idGen.Next(provider+":apikey", cred.key, baseURL, proxyURL, prefix, config.FormatSortedHeaders(entry.Headers))
-			attrs := map[string]string{
-				"source":       fmt.Sprintf("config:%s[%s]", provider, token),
-				"config_index": strconv.Itoa(i),
-			}
-			if cred.key != "" {
-				attrs["api_key"] = cred.key
-			}
-			metadata := map[string]any{}
-			if entry.DisableCooling != nil {
-				metadata["disable_cooling"] = *entry.DisableCooling
-			}
-			addRequestRetryToMetadata(entry.RequestRetry, metadata)
-			addRequestScopedErrorsToMetadata(entry.RequestScopedErrors, metadata)
-			if entry.Priority != 0 {
-				attrs["priority"] = strconv.Itoa(entry.Priority)
-			}
-			addWeightToAttrs(cred.weight, attrs)
-			if baseURL != "" {
-				attrs["base_url"] = baseURL
-			}
-			if entry.Websockets {
-				attrs["websockets"] = "true"
-			}
-			if provider == "codex" && entry.AlphaSearch {
-				attrs[coreauth.AttributeCodexAlphaSearch] = "true"
-			}
-			if hash := diff.ComputeCodexModelsHash(entry.Models); hash != "" {
-				attrs["models_hash"] = hash
-			}
-			addConfigHeadersToAttrs(entry.Headers, attrs)
-			a := &coreauth.Auth{
-				ID:         id,
-				Provider:   provider,
-				Label:      provider + "-apikey",
-				Prefix:     prefix,
-				Status:     coreauth.StatusActive,
-				ProxyURL:   proxyURL,
-				Attributes: attrs,
-				Metadata:   metadata,
-				CreatedAt:  now,
-				UpdatedAt:  now,
-			}
-			ApplyAuthExcludedModelsMeta(a, cfg, entry.ExcludedModels, "apikey")
-			if len(a.Metadata) == 0 {
-				a.Metadata = nil
-			}
-			out = append(out, a)
+		proxyURL := strings.TrimSpace(entry.ProxyURL)
+		id, token := idGen.Next(provider+":apikey", key, baseURL, proxyURL, prefix, config.FormatSortedHeaders(entry.Headers))
+		attrs := map[string]string{
+			"source":       fmt.Sprintf("config:%s[%s]", provider, token),
+			"config_index": strconv.Itoa(i),
 		}
+		if key != "" {
+			attrs["api_key"] = key
+		}
+		metadata := map[string]any{}
+		if entry.DisableCooling != nil {
+			metadata["disable_cooling"] = *entry.DisableCooling
+		}
+		addRequestRetryToMetadata(entry.RequestRetry, metadata)
+		addRequestScopedErrorsToMetadata(entry.RequestScopedErrors, metadata)
+		if entry.Priority != 0 {
+			attrs["priority"] = strconv.Itoa(entry.Priority)
+		}
+		addWeightToAttrs(entry.Weight, attrs)
+		if baseURL != "" {
+			attrs["base_url"] = baseURL
+		}
+		if entry.Websockets {
+			attrs["websockets"] = "true"
+		}
+		if provider == "codex" && entry.AlphaSearch {
+			attrs[coreauth.AttributeCodexAlphaSearch] = "true"
+		}
+		if provider == "codex" && entry.DisableCodexCloaking != nil {
+			attrs[coreauth.AttributeCodexDisableCloaking] = strconv.FormatBool(*entry.DisableCodexCloaking)
+		}
+		if hash := diff.ComputeCodexModelsHash(entry.Models); hash != "" {
+			attrs["models_hash"] = hash
+		}
+		addConfigHeadersToAttrs(entry.Headers, attrs)
+		a := &coreauth.Auth{
+			ID:         id,
+			Provider:   provider,
+			Label:      provider + "-apikey",
+			Prefix:     prefix,
+			Status:     coreauth.StatusActive,
+			ProxyURL:   strings.TrimSpace(entry.ProxyURL),
+			Attributes: attrs,
+			Metadata:   metadata,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}
+		ApplyAuthExcludedModelsMeta(a, cfg, entry.ExcludedModels, "apikey")
+		if len(a.Metadata) == 0 {
+			a.Metadata = nil
+		}
+		out = append(out, a)
 	}
 	return out
 }

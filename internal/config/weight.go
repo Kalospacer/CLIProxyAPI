@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/credentialweight"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/credentialweight"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,13 +27,15 @@ func validateCredentialWeightYAML(data []byte) error {
 	if len(document.Content) == 0 {
 		return nil
 	}
-	root := document.Content[0]
+	root, err := flattenV8(document.Content[0])
+	if err != nil {
+		return err
+	}
 	families := map[string]struct{}{
 		"gemini-api-key": {}, "interactions-api-key": {}, "claude-api-key": {},
 		"vertex-api-key": {}, "codex-api-key": {}, "xai-api-key": {}, "meta-api-key": {},
 	}
 	// Only codex/xai entries support bundled api-key-entries credentials.
-	bundledFamilies := map[string]struct{}{"codex-api-key": {}, "xai-api-key": {}}
 	for index := 0; root != nil && root.Kind == yaml.MappingNode && index+1 < len(root.Content); index += 2 {
 		name := root.Content[index].Value
 		value := root.Content[index+1]
@@ -52,6 +54,10 @@ func validateCredentialWeightYAML(data []byte) error {
 	}
 	return nil
 }
+
+// bundledFamilies lists the provider families whose key entries may also carry
+// bundled api-key-entries credentials.
+var bundledFamilies = map[string]struct{}{"codex-api-key": {}, "xai-api-key": {}}
 
 func validateWeightSequenceNode(sequence *yaml.Node, path string, allowBundled bool) error {
 	if sequence == nil || sequence.Kind != yaml.SequenceNode {

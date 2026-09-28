@@ -8,17 +8,15 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	xaiauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/xai"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/proxyutil"
+	xaiauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/xai"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
+	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -215,7 +213,6 @@ func (h *Handler) APICall(c *gin.Context) {
 		Timeout: defaultAPICallTimeout,
 	}
 	httpClient.Transport = h.apiCallTransport(auth, requestProxyURL)
-	httpClient = util.WrapGoogleRewriteClient(httpClient)
 
 	resp, errDo := httpClient.Do(req)
 	if errDo != nil {
@@ -569,10 +566,9 @@ func (h *Handler) refreshAntigravityOAuthAccessToken(ctx context.Context, auth *
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	httpClient := &http.Client{
-		Timeout: defaultAPICallTimeout,
+		Timeout:   defaultAPICallTimeout,
+		Transport: h.apiCallTransport(auth, requestProxyURL),
 	}
-	httpClient.Transport = h.apiCallTransport(auth, requestProxyURL)
-	httpClient = util.WrapGoogleRewriteClient(httpClient)
 	resp, errDo := httpClient.Do(req)
 	if errDo != nil {
 		return "", errDo
@@ -962,63 +958,6 @@ func proxyURLFromAPIKeyConfig(cfg *config.Config, auth *coreauth.Auth) string {
 		if entry := resolveAPIKeyConfig(cfg.CodexKey, auth); entry != nil {
 			return strings.TrimSpace(entry.ProxyURL)
 		}
-		// Bundled codex api-key-entries share one config entry; match inner keys
-		// when the flat lookup misses. Narrow candidates with the auth's
-		// config_index, prefix, proxy, and base_url before trusting a bare key
-		// match, and honor the bundled key's own proxy-url override.
-		var attrKey, attrBase string
-		if auth != nil && auth.Attributes != nil {
-			attrKey = strings.TrimSpace(auth.Attributes["api_key"])
-			attrBase = strings.TrimSpace(auth.Attributes["base_url"])
-		}
-		if attrKey == "" {
-			return ""
-		}
-		matchesBundled := func(entry *config.CodexKey, bundled config.OpenAICompatibilityAPIKey) bool {
-			if !strings.EqualFold(strings.TrimSpace(bundled.APIKey), attrKey) {
-				return false
-			}
-			if auth != nil {
-				if !strings.EqualFold(strings.TrimSpace(entry.Prefix), strings.TrimSpace(auth.Prefix)) {
-					return false
-				}
-				if !strings.EqualFold(strings.TrimSpace(entry.ProxyURL), strings.TrimSpace(auth.ProxyURL)) {
-					return false
-				}
-			}
-			if attrBase != "" {
-				cfgBase := strings.TrimSpace(entry.BaseURL)
-				if cfgBase != "" && !strings.EqualFold(cfgBase, attrBase) {
-					return false
-				}
-			}
-			return true
-		}
-		if auth != nil && auth.AuthSourceKind() == coreauth.AuthSourceConfig && auth.Attributes != nil {
-			if index, errIndex := strconv.Atoi(strings.TrimSpace(auth.Attributes[coreauth.AttributeConfigIndex])); errIndex == nil && index >= 0 && index < len(cfg.CodexKey) {
-				entry := &cfg.CodexKey[index]
-				for _, bundled := range entry.APIKeyEntries {
-					if matchesBundled(entry, bundled) {
-						if strings.TrimSpace(bundled.ProxyURL) != "" {
-							return strings.TrimSpace(bundled.ProxyURL)
-						}
-						return strings.TrimSpace(entry.ProxyURL)
-					}
-				}
-			}
-		}
-		for i := range cfg.CodexKey {
-			entry := &cfg.CodexKey[i]
-			for _, bundled := range entry.APIKeyEntries {
-				if matchesBundled(entry, bundled) {
-					if strings.TrimSpace(bundled.ProxyURL) != "" {
-						return strings.TrimSpace(bundled.ProxyURL)
-					}
-					return strings.TrimSpace(entry.ProxyURL)
-				}
-			}
-		}
-		return ""
 	case "xai":
 		if entry := resolveAPIKeyConfig(cfg.XAIKey, auth); entry != nil {
 			return strings.TrimSpace(entry.ProxyURL)

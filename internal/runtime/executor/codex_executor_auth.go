@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	codexauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/codex"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
-	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
+	codexauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
+	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -73,15 +73,22 @@ func codexCreds(a *cliproxyauth.Auth) (apiKey, baseURL string) {
 }
 
 func (e *CodexExecutor) resolveCodexConfig(auth *cliproxyauth.Auth) *config.CodexKey {
-	if auth == nil || e.cfg == nil {
+	if e == nil {
+		return nil
+	}
+	return resolveCodexKeyConfig(e.cfg, auth)
+}
+
+func resolveCodexKeyConfig(cfg *config.Config, auth *cliproxyauth.Auth) *config.CodexKey {
+	if auth == nil || cfg == nil {
 		return nil
 	}
 	var attrKey, attrBase string
 	if auth.Attributes != nil {
 		attrKey = strings.TrimSpace(auth.Attributes["api_key"])
 		attrBase = strings.TrimSpace(auth.Attributes["base_url"])
-		if index, errIndex := strconv.Atoi(strings.TrimSpace(auth.Attributes[cliproxyauth.AttributeConfigIndex])); errIndex == nil && index >= 0 && index < len(e.cfg.CodexKey) {
-			entry := &e.cfg.CodexKey[index]
+		if index, errIndex := strconv.Atoi(strings.TrimSpace(auth.Attributes[cliproxyauth.AttributeConfigIndex])); errIndex == nil && index >= 0 && index < len(cfg.CodexKey) {
+			entry := &cfg.CodexKey[index]
 			cfgKey := strings.TrimSpace(entry.APIKey)
 			cfgBase := strings.TrimSpace(entry.BaseURL)
 			if (attrKey == "" || strings.EqualFold(cfgKey, attrKey)) && (attrBase == "" || strings.EqualFold(cfgBase, attrBase)) {
@@ -89,29 +96,41 @@ func (e *CodexExecutor) resolveCodexConfig(auth *cliproxyauth.Auth) *config.Code
 			}
 		}
 	}
-	match := func(cfgKeyRaw string, entry *config.CodexKey) bool {
-		if !strings.EqualFold(strings.TrimSpace(cfgKeyRaw), attrKey) {
-			return false
-		}
-		cfgBase := strings.TrimSpace(entry.BaseURL)
-		if attrBase == "" || cfgBase == "" {
+	// A bundled entry answers to every key it carries, not only to the top-level
+	// one, so each match below has to look inside APIKeyEntries as well.
+	carriesKey := func(entry *config.CodexKey, key string) bool {
+		if strings.EqualFold(strings.TrimSpace(entry.APIKey), key) {
 			return true
 		}
-		return strings.EqualFold(cfgBase, attrBase)
+		for _, bundled := range entry.APIKeyEntries {
+			if strings.EqualFold(strings.TrimSpace(bundled.APIKey), key) {
+				return true
+			}
+		}
+		return false
 	}
-	for i := range e.cfg.CodexKey {
-		entry := &e.cfg.CodexKey[i]
-		if attrKey == "" {
-			if attrBase != "" && strings.EqualFold(strings.TrimSpace(entry.BaseURL), attrBase) {
+	for i := range cfg.CodexKey {
+		entry := &cfg.CodexKey[i]
+		cfgBase := strings.TrimSpace(entry.BaseURL)
+		if attrKey != "" && attrBase != "" {
+			if carriesKey(entry, attrKey) && strings.EqualFold(cfgBase, attrBase) {
 				return entry
 			}
 			continue
 		}
-		if match(entry.APIKey, entry) {
+		if attrKey != "" && carriesKey(entry, attrKey) {
+			if cfgBase == "" || strings.EqualFold(cfgBase, attrBase) {
+				return entry
+			}
+		}
+		if attrKey == "" && attrBase != "" && strings.EqualFold(cfgBase, attrBase) {
 			return entry
 		}
-		for _, bundled := range entry.APIKeyEntries {
-			if match(bundled.APIKey, entry) {
+	}
+	if attrKey != "" {
+		for i := range cfg.CodexKey {
+			entry := &cfg.CodexKey[i]
+			if carriesKey(entry, attrKey) {
 				return entry
 			}
 		}
