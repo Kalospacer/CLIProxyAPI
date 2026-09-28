@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
@@ -42,7 +43,7 @@ func NewProxyAwareHTTPClient(ctx context.Context, cfg *config.Config, auth *clip
 		transport := buildProxyTransport(proxyURL)
 		if transport != nil {
 			httpClient.Transport = transport
-			return httpClient
+			return util.WrapGoogleRewriteClient(httpClient)
 		}
 		// If proxy setup failed, log and fall through to context RoundTripper
 		log.Debugf("failed to setup proxy from URL: %s, falling back to context transport", proxyutil.Redact(proxyURL))
@@ -53,7 +54,7 @@ func NewProxyAwareHTTPClient(ctx context.Context, cfg *config.Config, auth *clip
 		httpClient.Transport = rt
 	}
 
-	return httpClient
+	return util.WrapGoogleRewriteClient(httpClient)
 }
 
 var devinTransportCache = NewTransportCache[string](DefaultTransportCacheCapacity)
