@@ -29,6 +29,22 @@ func TestAPIKeyWeightValidation(t *testing.T) {
 	}
 }
 
+func TestBundledAPIKeyWeightValidation(t *testing.T) {
+	for _, provider := range []string{"codex", "xai", "typesafe"} {
+		for _, weight := range []string{"1.5", "1000001"} {
+			t.Run(provider+"/"+weight, func(t *testing.T) {
+				legacy := provider + "-api-key:\n  - api-key: parent\n    base-url: https://example.invalid\n    api-key-entries:\n      - api-key: bundled\n        weight: " + weight + "\n"
+				v8 := "api-keys:\n  " + provider + ":\n    - name: shared\n      base-url: https://example.invalid\n      keys:\n        - api-key: parent\n          api-key-entries:\n            - api-key: bundled\n              weight: " + weight + "\n"
+				for _, raw := range []string{legacy, v8} {
+					if _, err := ParseConfigBytes([]byte(raw)); err == nil {
+						t.Fatalf("invalid bundled weight %s accepted:\n%s", weight, raw)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestAPIKeyWeightParsingAndZeroPersistence(t *testing.T) {
 	cfg, errParse := ParseConfigBytes([]byte(`xai-api-key:
   - api-key: key

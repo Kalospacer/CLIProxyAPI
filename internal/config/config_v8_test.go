@@ -30,7 +30,7 @@ func TestV8ExampleLoadsAndRoundTrips(t *testing.T) {
 	if err = ValidateV8Config(example); err != nil {
 		t.Fatalf("active template must use the v8 layout: %v", err)
 	}
-	for _, count := range []int{len(active.GeminiKey), len(active.CodexKey), len(active.ClaudeKey), len(active.VertexCompatAPIKey), len(active.XAIKey), len(active.MetaKey), len(active.InteractionsKey), len(active.OpenAICompatibility)} {
+	for _, count := range []int{len(active.GeminiKey), len(active.CodexKey), len(active.ClaudeKey), len(active.VertexCompatAPIKey), len(active.XAIKey), len(active.MetaKey), len(active.TypeSafeKey), len(active.InteractionsKey), len(active.OpenAICompatibility)} {
 		if count != 0 {
 			t.Fatal("placeholder upstream credentials must remain commented")
 		}
@@ -67,7 +67,7 @@ func TestV8ExampleLoadsAndRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Port != 8317 || len(cfg.APIKeys) != 3 || len(cfg.GeminiKey) != 3 || len(cfg.CodexKey) != 1 || len(cfg.ClaudeKey) != 2 || len(cfg.VertexCompatAPIKey) != 1 || len(cfg.XAIKey) != 1 || len(cfg.MetaKey) != 1 || len(cfg.InteractionsKey) != 1 || len(cfg.OpenAICompatibility) != 1 {
+	if cfg.Port != 8317 || len(cfg.APIKeys) != 3 || len(cfg.GeminiKey) != 3 || len(cfg.CodexKey) != 1 || len(cfg.ClaudeKey) != 2 || len(cfg.VertexCompatAPIKey) != 1 || len(cfg.XAIKey) != 1 || len(cfg.MetaKey) != 1 || len(cfg.TypeSafeKey) != 1 || len(cfg.InteractionsKey) != 1 || len(cfg.OpenAICompatibility) != 1 {
 		t.Fatal("v8 example fields did not reach runtime config")
 	}
 	if !cfg.QuotaExceeded.AntigravityCredits || cfg.QuotaExceeded.SwitchProject || cfg.QuotaExceeded.SwitchPreviewModel {
@@ -101,6 +101,66 @@ func TestV8ExampleLoadsAndRoundTrips(t *testing.T) {
 	}
 	if groups := yamlPath(node.Content[0], "api-keys.gemini"); groups == nil || len(groups.Content) != 2 || yamlPath(groups.Content[0], "name").Value != "gemini-1" {
 		t.Fatal("save lost upstream group identity")
+	}
+}
+
+func TestV8TypeSafeMigrationPreservesBundledKeys(t *testing.T) {
+	legacy := []byte(`typesafe-api-key:
+  - api-key: parent-key
+    base-url: https://api.typesafe.ai
+    prefix: typesafe
+    headers: {X-Test: preserved}
+    models: [{name: jev-latest, alias: jev}]
+    excluded-models: [jev-experimental]
+    disable-cooling: false
+    request-retry: 2
+    api-key-entries:
+      - api-key: bundled-1
+        weight: 3
+      - api-key: bundled-2
+        proxy-url: direct
+`)
+	before, err := ParseConfigBytes(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before.TypeSafeKey) != 1 || len(before.TypeSafeKey[0].APIKeyEntries) != 2 {
+		t.Fatal("legacy TypeSafe credentials did not reach runtime config")
+	}
+	migrated, changed, err := NormalizeConfigLayout(legacy, true)
+	if err != nil || !changed {
+		t.Fatalf("migrate TypeSafe credentials: changed=%v error=%v", changed, err)
+	}
+	if err = ValidateV8Config(migrated); err != nil {
+		t.Fatalf("validate migrated TypeSafe credentials: %v", err)
+	}
+	var doc yaml.Node
+	if err = yaml.Unmarshal(migrated, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if yamlPath(doc.Content[0], "api-keys.typesafe") == nil || yamlPath(doc.Content[0], "typesafe-api-key") != nil {
+		t.Fatal("TypeSafe credentials must migrate to the v8 provider groups")
+	}
+	after, err := ParseConfigBytes(migrated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before.TypeSafeKey, after.TypeSafeKey) {
+		t.Fatalf("migration changed TypeSafe credentials: before=%+v after=%+v", before.TypeSafeKey, after.TypeSafeKey)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err = os.WriteFile(path, migrated, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = SaveConfigPreserveComments(path, after); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(after.TypeSafeKey, reloaded.TypeSafeKey) {
+		t.Fatal("saving v8 config changed TypeSafe credentials")
 	}
 }
 
@@ -145,7 +205,7 @@ func TestV8PresencePrecedenceAndCleanup(t *testing.T) {
 }
 
 func TestV8KeyInheritance(t *testing.T) {
-	for _, provider := range []string{"gemini", "interactions", "vertex", "codex", "claude", "xai", "meta"} {
+	for _, provider := range []string{"gemini", "interactions", "vertex", "codex", "claude", "xai", "meta", "typesafe"} {
 		t.Run(provider, func(t *testing.T) {
 			raw := "request-retry: 9\napi-keys:\n  " + provider + ":\n" + `    - name: shared
       base-url: https://example.invalid
@@ -304,6 +364,43 @@ proxy-url: old
 	remigrated, _, err := NormalizeConfigLayout(migrated, true)
 	if err != nil || strings.Count(string(remigrated), "# home:") != 1 || strings.Count(string(remigrated), "# forgotten-setting:") != 1 {
 		t.Fatalf("repeated migration lost or duplicated comments: %v\n%s", err, remigrated)
+	}
+}
+
+func TestV8MigrationCommentsUnknownNestedFields(t *testing.T) {
+	raw := []byte(`server: {port: 8317}
+routing: {strategy: fill-first, session-affinity: true}
+oauth:
+  providers:
+    codex:
+      disable-codex-cloaking: true
+      retired-setting: {mode: old}
+`)
+	unchanged, changed, err := NormalizeConfigLayout(raw, false)
+	if err != nil || changed || string(unchanged) != string(raw) {
+		t.Fatalf("read-only normalization changed existing config: changed=%v error=%v", changed, err)
+	}
+	migrated, _, err := NormalizeConfigLayout(raw, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ValidateV8Config(migrated); err != nil {
+		t.Fatalf("migrated config is invalid: %v\n%s", err, migrated)
+	}
+	var doc yaml.Node
+	if err = yaml.Unmarshal(migrated, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if yamlPath(doc.Content[0], "oauth.providers.codex.retired-setting") != nil || !strings.Contains(string(migrated), "# oauth.providers.codex.retired-setting:") {
+		t.Fatalf("unknown nested field was not preserved as a comment: %s", migrated)
+	}
+	cfg, err := ParseConfigBytes(migrated)
+	if err != nil || cfg.Routing.Strategy != "fill-first" || !cfg.Routing.SessionAffinity || !cfg.Codex.DisableCodexCloaking {
+		t.Fatalf("migration changed known settings: cfg=%+v error=%v", cfg, err)
+	}
+	remigrated, _, err := NormalizeConfigLayout(migrated, true)
+	if err != nil || strings.Count(string(remigrated), "# oauth.providers.codex.retired-setting:") != 1 {
+		t.Fatalf("repeated migration lost or duplicated the comment: %v\n%s", err, remigrated)
 	}
 }
 
@@ -554,7 +651,7 @@ func TestV8MigrationPreservesEmptyLegacyContainers(t *testing.T) {
 func TestV8EmptyLegacyContainersKeepNewValues(t *testing.T) {
 	raw := []byte(`port: 8317
 tls: null
-codex: {identity-confuse: true, live-media-relay: {}}
+codex: {disable-codex-cloaking: true, live-media-relay: {}}
 server: {tls: {enable: true, cert: server.crt, key: server.key}}
 oauth: {providers: {codex: {live-media-relay: {max-sessions: 12}}}}
 `)
@@ -567,7 +664,7 @@ oauth: {providers: {codex: {live-media-relay: {max-sessions: 12}}}}
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !cfg.TLS.Enable || cfg.TLS.Cert != "server.crt" || cfg.TLS.Key != "server.key" || cfg.Codex.LiveMediaRelay.MaxSessions != 12 || !cfg.Codex.IdentityConfuse {
+		if !cfg.TLS.Enable || cfg.TLS.Cert != "server.crt" || cfg.TLS.Key != "server.key" || cfg.Codex.LiveMediaRelay.MaxSessions != 12 || !cfg.Codex.DisableCodexCloaking {
 			t.Fatal("empty legacy block overwrote new values or a non-empty sibling")
 		}
 		var doc yaml.Node
@@ -577,7 +674,7 @@ oauth: {providers: {codex: {live-media-relay: {max-sessions: 12}}}}
 		if yamlPath(doc.Content[0], "tls") != nil || yamlPath(doc.Content[0], "codex.live-media-relay") != nil {
 			t.Fatal("conflicting empty legacy blocks were not removed")
 		}
-		if !migrate && yamlPath(doc.Content[0], "codex.identity-confuse") == nil {
+		if !migrate && yamlPath(doc.Content[0], "codex.disable-codex-cloaking") == nil {
 			t.Fatal("conflict cleanup migrated a non-conflicting legacy sibling")
 		}
 	}

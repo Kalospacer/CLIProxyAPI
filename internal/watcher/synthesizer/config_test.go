@@ -356,6 +356,37 @@ func TestConfigSynthesizer_CodexKeys(t *testing.T) {
 	}
 }
 
+func TestConfigSynthesizer_CodexBundledDisableCloaking(t *testing.T) {
+	for _, value := range []bool{false, true} {
+		ctx := &SynthesisContext{
+			Config: &config.Config{CodexKey: []config.CodexKey{{
+				APIKey:               "parent-key",
+				BaseURL:              "https://api.openai.com",
+				DisableCodexCloaking: boolPointer(value),
+				APIKeyEntries:        []config.OpenAICompatibilityAPIKey{{APIKey: "bundled-key"}},
+			}}},
+			Now:         time.Now(),
+			IDGenerator: NewStableIDGenerator(),
+		}
+		auths, err := NewConfigSynthesizer().Synthesize(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(auths) != 2 {
+			t.Fatalf("expected parent and bundled auths, got %d", len(auths))
+		}
+		want := "false"
+		if value {
+			want = "true"
+		}
+		for _, auth := range auths {
+			if got := auth.Attributes[coreauth.AttributeCodexDisableCloaking]; got != want {
+				t.Fatalf("auth %s: codex_disable_cloaking=%q, want %q", auth.ID, got, want)
+			}
+		}
+	}
+}
+
 func TestConfigSynthesizer_XAIKeys(t *testing.T) {
 	synth := NewConfigSynthesizer()
 	ctx := &SynthesisContext{
