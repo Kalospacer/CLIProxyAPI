@@ -3,7 +3,13 @@
 Go 1.26+ proxy server providing OpenAI/Gemini/Claude/Codex compatible APIs with OAuth and round-robin load balancing.
 
 ## Repository
-- GitHub: https://github.com/router-for-me/CLIProxyAPI
+- Upstream: https://github.com/router-for-me/CLIProxyAPI
+- This checkout's fork: https://github.com/Kalospacer/CLIProxyAPI
+
+## Fork Compatibility
+- TypeSafe is part of the v8 API-key family map (`api-keys.typesafe`). Configuration reads must remain non-mutating; v8 writes migrate legacy TypeSafe keys and preserve parent/bundled key values.
+- Codex, xAI, and TypeSafe synthesize nested `api-key-entries`. Credential resolution must honor the entry's effective proxy override, configuration index, prefix, and base URL to retain the correct model mapping.
+- `config_v8_typesafe_test.go` covers the restored management frontend's GET/PUT list-replacement contract, invalid-weight atomicity, and reload snapshots. See `docs/typesafe-v8-frontend-contract.md` for verification and deployment boundaries.
 
 ## Commands
 ```bash

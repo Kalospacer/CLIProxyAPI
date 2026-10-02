@@ -884,7 +884,11 @@ func resolveBundledCodexStyleAPIKeyConfig(entries []internalconfig.CodexKey, aut
 			if !strings.EqualFold(strings.TrimSpace(entry.GetPrefix()), strings.TrimSpace(auth.Prefix)) {
 				return false
 			}
-			if !strings.EqualFold(strings.TrimSpace(entry.GetProxyURL()), strings.TrimSpace(auth.ProxyURL)) {
+			proxyURL := strings.TrimSpace(entry.GetProxyURL())
+			if override := strings.TrimSpace(bundled.ProxyURL); override != "" {
+				proxyURL = override
+			}
+			if !strings.EqualFold(proxyURL, strings.TrimSpace(auth.ProxyURL)) {
 				return false
 			}
 		}
@@ -921,7 +925,10 @@ func resolveXAIAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalcon
 	if cfg == nil {
 		return nil
 	}
-	return resolveAPIKeyConfig(cfg.XAIKey, auth)
+	if entry := resolveAPIKeyConfig(cfg.XAIKey, auth); entry != nil {
+		return entry
+	}
+	return resolveBundledCodexStyleAPIKeyConfig(cfg.XAIKey, auth)
 }
 
 func resolveVertexAPIKeyConfig(cfg *internalconfig.Config, auth *Auth) *internalconfig.VertexCompatKey {
