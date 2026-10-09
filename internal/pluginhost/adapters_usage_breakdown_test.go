@@ -42,8 +42,7 @@ func TestUsageAdapterForwardsHostTokenBreakdown(t *testing.T) {
 	if !breakdown.Valid() {
 		t.Fatalf("fixture breakdown does not validate: %+v", breakdown)
 	}
-	// 插件执行器的记录按 mirasim␣+␣executorAdapter 命名，名字里没有协议信息，
-	// 所以只有过界的 breakdown 能告诉计费插件这次用的是哪套口径。
+	// Identifiers do not convey the response protocol. Forward validated buckets.
 	adapter.HandleUsage(context.Background(), coreusage.Record{
 		Provider: "mirasim", ExecutorType: "executorAdapter", Model: "kimi-k3",
 		Detail: coreusage.Detail{
