@@ -1565,6 +1565,39 @@ type UsageDetail struct {
 	CacheCreationTokens int64
 	// TotalTokens is the total token count.
 	TotalTokens int64
+	// Breakdown carries the host's own v2 token accounting, quality included.
+	// Which parser filled the flat counters above depends on the protocol the
+	// caller used, not on the provider or executor name, so a plugin that prices
+	// tokens reads this instead of re-deriving the semantics. Nil when the host
+	// has no validated accounting for the request.
+	Breakdown *UsageTokenBreakdown
+}
+
+// UsageTokenBreakdown mirrors the host's canonical v2 token accounting. The host
+// fills it from the parser that matches the caller's protocol and only forwards
+// it when the accounting validates, so a plugin can adopt it verbatim.
+type UsageTokenBreakdown struct {
+	SchemaVersion      int
+	Quality            string
+	TotalTokens        int64
+	Input              UsageTokenInputBreakdown
+	Output             UsageTokenOutputBreakdown
+	UnclassifiedTokens int64
+}
+
+// UsageTokenInputBreakdown contains mutually exclusive input token buckets.
+type UsageTokenInputBreakdown struct {
+	TotalTokens      int64
+	UncachedTokens   int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+}
+
+// UsageTokenOutputBreakdown contains mutually exclusive output token buckets.
+type UsageTokenOutputBreakdown struct {
+	TotalTokens        int64
+	NonReasoningTokens int64
+	ReasoningTokens    int64
 }
 
 // QuotaProvider surfaces credential quota, balance, and billing information for management clients.

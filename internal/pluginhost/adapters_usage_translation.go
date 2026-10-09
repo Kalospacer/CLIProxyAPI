@@ -204,6 +204,7 @@ func (a *usageAdapter) HandleUsage(ctx context.Context, record coreusage.Record)
 			CacheReadTokens:     record.Detail.CacheReadTokens,
 			CacheCreationTokens: record.Detail.CacheCreationTokens,
 			TotalTokens:         record.Detail.TotalTokens,
+			Breakdown:           pluginUsageBreakdown(record.Detail.TokenBreakdown),
 		},
 		ResponseHeaders: cloneHeader(record.ResponseHeaders),
 	})
@@ -400,4 +401,33 @@ func (h *Host) callResponseTranslator(ctx context.Context, record capabilityReco
 		return nil, false
 	}
 	return bytes.Clone(resp.Body), true
+}
+
+// pluginUsageBreakdown forwards the host's own v2 accounting to plugins. The
+// flat counters above are filled by whichever parser matches the caller's
+// protocol, so the semantics behind them cannot be recovered from the provider
+// or executor name. A breakdown that fails validation is not forwarded: the
+// plugin then falls back to its own classification instead of trusting numbers
+// the host itself rejected.
+func pluginUsageBreakdown(breakdown coreusage.TokenBreakdown) *pluginapi.UsageTokenBreakdown {
+	if !breakdown.Valid() {
+		return nil
+	}
+	return &pluginapi.UsageTokenBreakdown{
+		SchemaVersion: breakdown.SchemaVersion,
+		Quality:       string(breakdown.Quality),
+		TotalTokens:   breakdown.TotalTokens,
+		Input: pluginapi.UsageTokenInputBreakdown{
+			TotalTokens:      breakdown.Input.TotalTokens,
+			UncachedTokens:   breakdown.Input.UncachedTokens,
+			CacheReadTokens:  breakdown.Input.CacheReadTokens,
+			CacheWriteTokens: breakdown.Input.CacheWriteTokens,
+		},
+		Output: pluginapi.UsageTokenOutputBreakdown{
+			TotalTokens:        breakdown.Output.TotalTokens,
+			NonReasoningTokens: breakdown.Output.NonReasoningTokens,
+			ReasoningTokens:    breakdown.Output.ReasoningTokens,
+		},
+		UnclassifiedTokens: breakdown.UnclassifiedTokens,
+	}
 }
