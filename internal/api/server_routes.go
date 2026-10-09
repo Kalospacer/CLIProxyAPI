@@ -65,8 +65,8 @@ func (s *Server) setupRoutes() {
 	{
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.GET("/models/*model", func(c *gin.Context) {
-			// gin 不允许 /models/api.json 与 /models/*model 同时注册，
-			// fork 原有的 Kimi 模型文档因此由通配路由分派。
+			// Dispatch the fork's Kimi catalog through the wildcard route to
+			// avoid registering conflicting static and catch-all routes.
 			model := strings.TrimPrefix(c.Param("model"), "/")
 			if model == "api.json" {
 				s.kimiModelsAPIDocHandler(c)

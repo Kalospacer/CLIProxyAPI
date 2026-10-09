@@ -81,7 +81,7 @@ func TestUsageAdapterOmitsUnvalidatedHostTokenBreakdown(t *testing.T) {
 	})
 	adapter := &usageAdapter{host: host, pluginID: "usage-breakdown-invalid"}
 
-	// 零值与自相矛盾的 breakdown 都不过界：插件保留自己的兜底判定。
+	// Omit absent or invalid accounting so older consumer fallbacks still work.
 	inconsistent := coreusage.TokenBreakdown{
 		SchemaVersion: coreusage.TokenAccountingSchemaVersion,
 		Quality:       coreusage.TokenAccountingQualityComplete,

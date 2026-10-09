@@ -247,10 +247,10 @@ func (s *Service) probeAntigravityModelCapabilityHints(ctx context.Context, auth
 		client.Transport = transport
 		defer transport.CloseIdleConnections()
 	}
-	// fork 保留：本机 antigravity 走 GOOGLE_PROXY_BASE，探针请求同样需要重写。
+	// Preserve the fork's Google proxy rewrite for capability probes.
 	util.WrapGoogleRewriteClient(client)
 
-	// 上游改为带 project 的 POST 探针；fork 原有的单端点 GET 快路径已被它取代。
+	// Use the upstream project-aware POST probe after transport rewriting.
 	project, _ := auth.Metadata["project_id"].(string)
 	body, errMarshal := json.Marshal(map[string]string{"project": project})
 	if errMarshal != nil {
