@@ -17,13 +17,13 @@ import (
 // can override a truthy default. ReasoningOptions, when non-empty, replaces
 // the generated reasoning_options list outright (use [] to clear it).
 type kimiModelOverride struct {
-	Name            string          `json:"name"`
-	Context         int             `json:"context"`
-	Output          int             `json:"output"`
-	Input           int             `json:"input"`
-	Reasoning       *bool           `json:"reasoning"`
-	ToolCall        *bool           `json:"tool_call"`
-	Modalities      []string        `json:"modalities"`
+	Name             string          `json:"name"`
+	Context          int             `json:"context"`
+	Output           int             `json:"output"`
+	Input            int             `json:"input"`
+	Reasoning        *bool           `json:"reasoning"`
+	ToolCall         *bool           `json:"tool_call"`
+	Modalities       []string        `json:"modalities"`
 	ReasoningOptions json.RawMessage `json:"reasoning_options"`
 }
 
@@ -84,37 +84,6 @@ func defaultKimiReasoningOptions(info *registry.ModelInfo) []any {
 	return []any{
 		map[string]any{"type": "effort", "values": values},
 	}
-}
-
-// kimiSupportEfforts flattens the effort option of a reasoning_options list
-// into the plain string array Kimi's BYOK importer reads as support_efforts.
-// The importer ignores the kosong reasoning_options objects entirely; without
-// this field it falls back to a hardcoded low/medium/high/xhigh list for
-// gpt-family models. Null off-tiers are dropped; a list without an effort
-// option yields nil so the field stays omitted.
-func kimiSupportEfforts(reasoningOptions []any) []string {
-	for _, option := range reasoningOptions {
-		m, isMap := option.(map[string]any)
-		if !isMap || m["type"] != "effort" {
-			continue
-		}
-		values, isList := m["values"].([]any)
-		if !isList {
-			continue
-		}
-		efforts := make([]string, 0, len(values))
-		for _, value := range values {
-			s, isString := value.(string)
-			if !isString {
-				continue
-			}
-			if trimmed := strings.TrimSpace(s); trimmed != "" {
-				efforts = append(efforts, trimmed)
-			}
-		}
-		return efforts
-	}
-	return nil
 }
 
 // kimiModelsAPIDocHandler serves GET /v1/models/api.json.
@@ -248,9 +217,6 @@ func (s *Server) kimiModelsAPIDocHandler(c *gin.Context) {
 		}
 		if len(reasoningOptions) > 0 {
 			entry["reasoning_options"] = reasoningOptions
-			if efforts := kimiSupportEfforts(reasoningOptions); len(efforts) > 0 {
-				entry["support_efforts"] = efforts
-			}
 		}
 		models[info.ID] = entry
 	}
