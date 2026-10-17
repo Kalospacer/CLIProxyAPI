@@ -207,6 +207,10 @@ func (e *OpenAICompatExecutor) Execute(ctx context.Context, auth *cliproxyauth.A
 		return resp, err
 	}
 	helps.AppendAPIResponseChunk(ctx, e.cfg, body)
+	// Some gateways wrap the completion in {"data": {...}, "success": true}.
+	// Flatten it before accounting and translation so both the usage claims and
+	// the downstream client see the completion itself.
+	body = helps.UnwrapCompatResponseEnvelope(body)
 	reporter.ObserveResponseModel(body)
 	// Ensure we at least record the request even if upstream doesn't return usage
 	// Translate response back to source format when needed
