@@ -72,7 +72,7 @@ func convertOpenAIRequestToCodex(modelName string, inputRawJSON []byte, stream b
 	if v := gjson.GetBytes(rawJSON, "reasoning_effort"); v.Exists() {
 		out, _ = sjson.SetBytes(out, "reasoning.effort", v.Value())
 	} else {
-		out, _ = sjson.SetBytes(out, "reasoning.effort", translatorcommon.DefaultCodexReasoningEffort(modelName))
+		out, _ = sjson.SetBytes(out, "reasoning.effort", "high")
 	}
 	if serviceTier := normalizeCodexServiceTier(root.Get("service_tier")); serviceTier != "" {
 		out, _ = sjson.SetBytes(out, "service_tier", serviceTier)
