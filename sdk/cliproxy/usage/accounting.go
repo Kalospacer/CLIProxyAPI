@@ -312,14 +312,29 @@ func EnsureTokenBreakdown(detail Detail) Detail {
 // direct SDK usage details using the known provider's token semantics. Unknown
 // providers remain unclassified instead of guessing how their buckets overlap.
 func EnsureTokenBreakdownForProvider(detail Detail, provider, executorType string) Detail {
-	if !detail.TokenBreakdown.Valid() {
-		semantics := tokenAccountingSemanticsFor(provider, executorType)
+	semantics := tokenAccountingSemanticsFor(provider, executorType)
+	// The OpenAI-style parser already attaches a strict subset breakdown, so a
+	// reasoning count above completion arrives here as an inconsistent record.
+	// That semantics keeps every reported number instead, which requires
+	// re-normalizing those records rather than accepting the stored breakdown.
+	if !detail.TokenBreakdown.Valid() ||
+		(semantics == tokenAccountingSemanticsSubsetReportedReasoning &&
+			detail.TokenBreakdown.Quality == TokenAccountingQualityInconsistent) {
 		if detail.CacheReadTokens == 0 && detail.CachedTokens > 0 && detail.InputTokens == 0 &&
 			detail.OutputTokens == 0 && detail.ReasoningTokens == 0 && detail.CacheCreationTokens == 0 && detail.TotalTokens == 0 &&
-			(semantics == tokenAccountingSemanticsSubset || semantics == tokenAccountingSemanticsSeparateReasoning) {
+			(semantics == tokenAccountingSemanticsSubset ||
+				semantics == tokenAccountingSemanticsSubsetReportedReasoning ||
+				semantics == tokenAccountingSemanticsSeparateReasoning) {
 			detail.CacheReadTokens = detail.CachedTokens
 		}
 		detail.TokenBreakdown = tokenBreakdownForSemantics(detail, semantics)
+		if semantics == tokenAccountingSemanticsSubsetReportedReasoning && detail.ReasoningTokens > detail.OutputTokens {
+			// The breakdown above already keeps the reasoning count next to the
+			// buckets. Consumers that re-derive the buckets from this flat detail
+			// still apply subset accounting, so the count is cleared here as well;
+			// every reported input, cache, output and total token is untouched.
+			detail.ReasoningTokens = 0
+		}
 	}
 	if detail.TotalTokens == 0 {
 		detail.TotalTokens = detail.TokenBreakdown.TotalTokens

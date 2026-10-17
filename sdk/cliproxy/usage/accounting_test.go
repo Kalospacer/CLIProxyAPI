@@ -275,4 +275,12 @@ func TestEnsureTokenBreakdownForProviderKeepsReportedReasoningForOpenAICompat(t 
 		detail.TokenBreakdown.Input.UncachedTokens != 46 {
 		t.Fatalf("breakdown = %+v", detail.TokenBreakdown)
 	}
+	// Consumers that rebuild the buckets from the flat detail apply subset
+	// accounting, so the count above completion must not stay in that field.
+	if detail.ReasoningTokens != 0 {
+		t.Fatalf("flat reasoning tokens = %d, want 0", detail.ReasoningTokens)
+	}
+	if detail.InputTokens != 494 || detail.OutputTokens != 24 || detail.TotalTokens != 518 {
+		t.Fatalf("flat detail changed: %+v", detail)
+	}
 }
