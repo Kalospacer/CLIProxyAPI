@@ -220,3 +220,59 @@ func TestNewSeparateReasoningTokenBreakdown_RejectsArithmeticOverflow(t *testing
 		t.Fatalf("uncached tokens negative: %d", b.Input.UncachedTokens)
 	}
 }
+
+// Providers that bill reasoning outside the completion count can report more
+// reasoning tokens than completion tokens. Every reported number must survive
+// accounting; declaring the record inconsistent would zero input, output and cache.
+func TestNewSubsetTokenBreakdownWithReportedReasoningKeepsNumbers(t *testing.T) {
+	breakdown := NewSubsetTokenBreakdownWithReportedReasoning(494, 448, 0, 24, 26, 518)
+	if !breakdown.Valid() {
+		t.Fatalf("breakdown is invalid: %+v", breakdown)
+	}
+	if breakdown.Quality != TokenAccountingQualityComplete || breakdown.TotalTokens != 518 {
+		t.Fatalf("breakdown = %+v", breakdown)
+	}
+	if breakdown.Input.TotalTokens != 494 || breakdown.Input.UncachedTokens != 46 ||
+		breakdown.Input.CacheReadTokens != 448 {
+		t.Fatalf("input = %+v", breakdown.Input)
+	}
+	if breakdown.Output.TotalTokens != 24 || breakdown.Output.NonReasoningTokens != 24 ||
+		breakdown.Output.ReasoningTokens != 0 || breakdown.Output.ReportedReasoningTokens != 26 {
+		t.Fatalf("output = %+v", breakdown.Output)
+	}
+}
+
+// First-party subset accounting stays strict: only the OpenAI-compatible
+// gateway variant keeps a reasoning count that exceeds completion.
+func TestNewSubsetTokenBreakdownRejectsReasoningAboveOutput(t *testing.T) {
+	breakdown := NewSubsetTokenBreakdown(494, 448, 0, 24, 26, 518)
+	if breakdown.Quality != TokenAccountingQualityInconsistent {
+		t.Fatalf("breakdown = %+v", breakdown)
+	}
+}
+
+func TestNewPartialSubsetTokenBreakdownRejectsReasoningAboveOutput(t *testing.T) {
+	breakdown := NewPartialSubsetTokenBreakdown(494, 448, 0, 24, 26, 520)
+	if breakdown.Quality != TokenAccountingQualityInconsistent {
+		t.Fatalf("breakdown = %+v", breakdown)
+	}
+}
+
+func TestEnsureTokenBreakdownForProviderKeepsReportedReasoningForOpenAICompat(t *testing.T) {
+	detail := EnsureTokenBreakdownForProvider(Detail{
+		InputTokens:     494,
+		OutputTokens:    24,
+		ReasoningTokens: 26,
+		CachedTokens:    448,
+		CacheReadTokens: 448,
+		TotalTokens:     518,
+	}, "openai-compatible-cline", "OpenAICompatExecutor")
+	if !detail.TokenBreakdown.Valid() || detail.TokenBreakdown.Quality != TokenAccountingQualityComplete {
+		t.Fatalf("breakdown = %+v", detail.TokenBreakdown)
+	}
+	if detail.TokenBreakdown.Output.TotalTokens != 24 ||
+		detail.TokenBreakdown.Output.ReportedReasoningTokens != 26 ||
+		detail.TokenBreakdown.Input.UncachedTokens != 46 {
+		t.Fatalf("breakdown = %+v", detail.TokenBreakdown)
+	}
+}

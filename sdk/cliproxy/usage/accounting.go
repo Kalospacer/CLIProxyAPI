@@ -19,6 +19,10 @@ type tokenAccountingSemantics uint8
 const (
 	tokenAccountingSemanticsUnknown tokenAccountingSemantics = iota
 	tokenAccountingSemanticsSubset
+	// tokenAccountingSemanticsSubsetReportedReasoning is the OpenAI-compatible
+	// gateway variant: reasoning may be billed outside the completion count, so
+	// the reported reasoning count is kept instead of invalidating the record.
+	tokenAccountingSemanticsSubsetReportedReasoning
 	tokenAccountingSemanticsIndependent
 	tokenAccountingSemanticsSeparateReasoning
 )
@@ -32,10 +36,17 @@ type TokenInputBreakdown struct {
 }
 
 // TokenOutputBreakdown contains mutually exclusive output token buckets.
+//
+// ReportedReasoningTokens carries a provider-reported reasoning count that is
+// billed outside TotalTokens. Some OpenAI-compatible gateways report visible
+// completion tokens and a separate reasoning count that can exceed it; keeping
+// that count out of the mutually exclusive buckets preserves the invariants
+// without altering any number the provider returned.
 type TokenOutputBreakdown struct {
-	TotalTokens        int64 `json:"total_tokens"`
-	NonReasoningTokens int64 `json:"non_reasoning_tokens"`
-	ReasoningTokens    int64 `json:"reasoning_tokens"`
+	TotalTokens             int64 `json:"total_tokens"`
+	NonReasoningTokens      int64 `json:"non_reasoning_tokens"`
+	ReasoningTokens         int64 `json:"reasoning_tokens"`
+	ReportedReasoningTokens int64 `json:"reported_reasoning_tokens,omitempty"`
 }
 
 // TokenBreakdown is the canonical, non-overlapping token accounting contract.
@@ -57,7 +68,7 @@ func (b TokenBreakdown) Valid() bool {
 		b.Input.TotalTokens < 0 || b.Input.UncachedTokens < 0 ||
 		b.Input.CacheReadTokens < 0 || b.Input.CacheWriteTokens < 0 ||
 		b.Output.TotalTokens < 0 || b.Output.NonReasoningTokens < 0 ||
-		b.Output.ReasoningTokens < 0 {
+		b.Output.ReasoningTokens < 0 || b.Output.ReportedReasoningTokens < 0 {
 		return false
 	}
 	inputSum, okInput := nonNegativeSum(b.Input.UncachedTokens, b.Input.CacheReadTokens, b.Input.CacheWriteTokens)
@@ -115,6 +126,56 @@ func NewSubsetTokenBreakdown(inputTotal, cacheRead, cacheWrite, outputTotal, rea
 			NonReasoningTokens: outputTotal - reasoning,
 			ReasoningTokens:    reasoning,
 		},
+	}
+}
+
+// NewSubsetTokenBreakdownWithReportedReasoning is the OpenAI-compatible gateway
+// variant of NewSubsetTokenBreakdown. Those gateways may bill reasoning outside
+// the completion count and report more reasoning than completion; the numbers
+// are kept as reported, so the output total stays the provider's completion
+// count and the reasoning count is recorded next to the mutually exclusive
+// buckets instead of invalidating the whole record.
+func NewSubsetTokenBreakdownWithReportedReasoning(inputTotal, cacheRead, cacheWrite, outputTotal, reasoning, total int64) TokenBreakdown {
+	cacheTotal, okCache := nonNegativeSum(cacheRead, cacheWrite)
+	expectedTotal, okExpected := nonNegativeSum(inputTotal, outputTotal)
+	if !okCache || !okExpected || reasoning < 0 ||
+		cacheTotal > inputTotal || outputTotal < 0 || inputTotal < 0 {
+		return inconsistentTokenBreakdown(total, expectedTotal)
+	}
+	resolvedTotal, okTotal := resolveAccountingTotal(total, expectedTotal)
+	if !okTotal {
+		return inconsistentTokenBreakdown(total, expectedTotal)
+	}
+	return TokenBreakdown{
+		SchemaVersion: TokenAccountingSchemaVersion,
+		Quality:       TokenAccountingQualityComplete,
+		TotalTokens:   resolvedTotal,
+		Input: TokenInputBreakdown{
+			TotalTokens:      inputTotal,
+			UncachedTokens:   inputTotal - cacheTotal,
+			CacheReadTokens:  cacheRead,
+			CacheWriteTokens: cacheWrite,
+		},
+		Output: subsetOutputBreakdown(outputTotal, reasoning),
+	}
+}
+
+// subsetOutputBreakdown keeps provider-reported numbers intact. A reasoning
+// count above the completion count means the provider bills reasoning outside
+// the output total, so the count is recorded next to the buckets instead of
+// invalidating the whole record.
+func subsetOutputBreakdown(outputTotal, reasoning int64) TokenOutputBreakdown {
+	if reasoning > outputTotal {
+		return TokenOutputBreakdown{
+			TotalTokens:             outputTotal,
+			NonReasoningTokens:      outputTotal,
+			ReportedReasoningTokens: reasoning,
+		}
+	}
+	return TokenOutputBreakdown{
+		TotalTokens:        outputTotal,
+		NonReasoningTokens: outputTotal - reasoning,
+		ReasoningTokens:    reasoning,
 	}
 }
 
@@ -272,6 +333,7 @@ func tokenBreakdownForSemantics(detail Detail, semantics tokenAccountingSemantic
 			return inconsistentTokenBreakdown(detail.TotalTokens, 0)
 		} else if total > 0 && (semantics == tokenAccountingSemanticsUnknown ||
 			semantics == tokenAccountingSemanticsSubset ||
+			semantics == tokenAccountingSemanticsSubsetReportedReasoning ||
 			(semantics == tokenAccountingSemanticsSeparateReasoning &&
 				(detail.CacheReadTokens > 0 || detail.CacheCreationTokens > 0 || detail.CachedTokens > 0))) {
 			return NewUnclassifiedTokenBreakdown(total)
@@ -280,6 +342,15 @@ func tokenBreakdownForSemantics(detail Detail, semantics tokenAccountingSemantic
 	switch semantics {
 	case tokenAccountingSemanticsSubset:
 		return NewSubsetTokenBreakdown(
+			detail.InputTokens,
+			detail.CacheReadTokens,
+			detail.CacheCreationTokens,
+			detail.OutputTokens,
+			detail.ReasoningTokens,
+			detail.TotalTokens,
+		)
+	case tokenAccountingSemanticsSubsetReportedReasoning:
+		return NewSubsetTokenBreakdownWithReportedReasoning(
 			detail.InputTokens,
 			detail.CacheReadTokens,
 			detail.CacheCreationTokens,
@@ -345,7 +416,7 @@ func tokenAccountingSemanticsFor(provider, executorType string) tokenAccountingS
 		return tokenAccountingSemanticsUnknown
 	}
 	if normalizedExecutor == "openaicompatexecutor" || normalizedProvider == "openai-compatibility" || strings.HasPrefix(normalizedProvider, "openai-compatible-") {
-		return tokenAccountingSemanticsSubset
+		return tokenAccountingSemanticsSubsetReportedReasoning
 	}
 	if strings.Contains(value, "claude") || strings.Contains(value, "anthropic") {
 		return tokenAccountingSemanticsIndependent
