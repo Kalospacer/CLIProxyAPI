@@ -11,6 +11,15 @@ Go 1.26+ proxy server providing OpenAI/Gemini/Claude/Codex compatible APIs with 
 - Codex, xAI, and TypeSafe synthesize nested `api-key-entries`. Credential resolution must honor the entry's effective proxy override, configuration index, prefix, and base URL to retain the correct model mapping.
 - `config_v8_typesafe_test.go` covers the restored management frontend's GET/PUT list-replacement contract, invalid-weight atomicity, and reload snapshots. See `docs/typesafe-v8-frontend-contract.md` for verification and deployment boundaries.
 
+## 上游同步与插件契约
+
+- 同步流程：本地 `git merge --no-ff origin/main` → 解决冲突 → `go build ./...` 与关键包测试（`sdk/cliproxy/usage`、`internal/watcher`、`internal/runtime/executor/helps`、`internal/translator/codex`）→ 服务器 `CGO_ENABLED=1` 构建 → 8319 测试端口验证 → 备份生产二进制后替换上线。
+- 固定冲突：`internal/watcher/config_reload.go` 一律取上游实现（`configApplyMu` 串行化 + 重载后记录 `config.SourceHash`）。不要保留本 fork 的旧写法。
+- `sdk/pluginapi` 必须保留 `UsageDetail.Breakdown` 与 `UsageTokenBreakdown*`（本 fork 新增，下游 `cpa-key-billing` 依赖宿主 token 口径）。上游没有这些类型，合并后需确认仍在。
+- 插件是 `-buildmode=plugin` 动态库，与宿主共享 `sdk/pluginapi` 的结构体布局；任何字段增删都要重建全部启用插件。`kimi-apijson-editor` 本地无源码，不能重建，因此不要改动该包结构体。
+- token 记账修复不要回退：subset 语义下允许上报的 reasoning 大于 output（`NewSubsetTokenBreakdownWithReportedReasoning`），以及 `internal/runtime/executor/helps/openai_compat_envelope.go` 对 `{"data":…,"success":true}` 包裹响应的解包。
+- 已下线、不再恢复：`internal/translator/common/reasoning_default.go`（按注册档位挑选最接近的 reasoning effort）与 `/v1/models/api.json` 的 `support_efforts` 字段。
+
 ## Commands
 ```bash
 gofmt -w . # Format (required after Go changes)
