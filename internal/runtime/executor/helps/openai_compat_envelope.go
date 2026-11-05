@@ -1,6 +1,6 @@
 package helps
 
-import "github.com/tidwall/gjson"
+import "github.com/MoeForge/moego/ojson"
 
 // UnwrapCompatResponseEnvelope flattens OpenAI-compatible gateways that return
 // the whole completion inside a success envelope such as
@@ -15,7 +15,7 @@ func UnwrapCompatResponseEnvelope(body []byte) []byte {
 	if len(body) == 0 {
 		return body
 	}
-	root := gjson.ParseBytes(body)
+	root := ojson.ParseBytes(body)
 	if !root.IsObject() {
 		return body
 	}

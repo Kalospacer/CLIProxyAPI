@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tidwall/gjson"
+	"github.com/MoeForge/moego/ojson"
 )
 
 func TestUnwrapCompatResponseEnvelopeFlattensSuccessWrapper(t *testing.T) {
@@ -14,13 +14,13 @@ func TestUnwrapCompatResponseEnvelopeFlattensSuccessWrapper(t *testing.T) {
 	if strings.Contains(string(got), `"success"`) {
 		t.Fatalf("envelope was not removed: %s", got)
 	}
-	if score := gjson.GetBytes(got, "model").String(); score != "xiaomi/mimo-v2.6-flash" {
+	if score := ojson.GetBytes(got, "model").String(); score != "xiaomi/mimo-v2.6-flash" {
 		t.Fatalf("model = %q, want the inner completion model", score)
 	}
-	if score := gjson.GetBytes(got, "usage.prompt_tokens").String(); score != "710" {
+	if score := ojson.GetBytes(got, "usage.prompt_tokens").String(); score != "710" {
 		t.Fatalf("usage.prompt_tokens = %q, want 710", score)
 	}
-	if score := gjson.GetBytes(got, "choices.0.message.content").String(); score != "ok" {
+	if score := ojson.GetBytes(got, "choices.0.message.content").String(); score != "ok" {
 		t.Fatalf("content = %q, want ok", score)
 	}
 }
