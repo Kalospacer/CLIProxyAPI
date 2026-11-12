@@ -97,3 +97,33 @@ func TestUsageAdapterOmitsUnvalidatedHostTokenBreakdown(t *testing.T) {
 		}
 	}
 }
+
+func TestUsageAdapterForwardsBreakdownAndModalityTokens(t *testing.T) {
+	var got pluginapi.UsageDetail
+	plugin := usagePluginFunc(func(_ context.Context, record pluginapi.UsageRecord) {
+		got = record.Detail
+	})
+	host := newHostWithRecords(capabilityRecord{
+		id: "usage-breakdown-modalities",
+		plugin: pluginapi.Plugin{Capabilities: pluginapi.Capabilities{
+			UsagePlugin: plugin,
+		}},
+	})
+	adapter := &usageAdapter{host: host, pluginID: "usage-breakdown-modalities"}
+
+	textInput, imageInput := int64(70), int64(20)
+	adapter.HandleUsage(context.Background(), coreusage.Record{Detail: coreusage.Detail{
+		InputTokens: 90, OutputTokens: 158, ReasoningTokens: 137, TotalTokens: 248,
+		TokenBreakdown:  completeUsageBreakdownFixture(),
+		TextInputTokens: &textInput, ImageInputTokens: &imageInput,
+	}})
+	if got.Breakdown == nil || got.Breakdown.Output.ReasoningTokens != 137 {
+		t.Fatalf("host breakdown was lost: %+v", got.Breakdown)
+	}
+	if got.TextInputTokens == nil || *got.TextInputTokens != 70 || got.ImageInputTokens == nil || *got.ImageInputTokens != 20 {
+		t.Fatalf("modality counts were lost: %+v", got)
+	}
+	if got.TextInputTokens == &textInput || got.ImageInputTokens == &imageInput {
+		t.Fatal("modality counts must be copied before sending them to plugins")
+	}
+}

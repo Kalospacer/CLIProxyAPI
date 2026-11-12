@@ -1738,6 +1738,29 @@ type UsageDetail struct {
 	// tokens reads this instead of re-deriving the semantics. Nil when the host
 	// has no validated accounting for the request.
 	Breakdown *UsageTokenBreakdown
+
+	// TextInputTokens is the optional text input token count.
+	TextInputTokens *int64
+	// ImageInputTokens is the optional image input token count.
+	ImageInputTokens *int64
+	// AudioInputTokens is the optional audio input token count.
+	AudioInputTokens *int64
+	// VideoInputTokens is the optional video input token count.
+	VideoInputTokens *int64
+	// FileInputTokens is the optional file input token count.
+	FileInputTokens *int64
+	// CachedTextTokens is the optional cached text token count.
+	CachedTextTokens *int64
+	// CachedImageTokens is the optional cached image token count.
+	CachedImageTokens *int64
+	// CachedAudioTokens is the optional cached audio token count.
+	CachedAudioTokens *int64
+	// TextOutputTokens is the optional text output token count.
+	TextOutputTokens *int64
+	// ImageOutputTokens is the optional image output token count.
+	ImageOutputTokens *int64
+	// AudioOutputTokens is the optional audio output token count.
+	AudioOutputTokens *int64
 }
 
 // UsageTokenBreakdown mirrors the host's canonical v2 token accounting. The host
