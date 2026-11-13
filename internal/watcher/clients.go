@@ -64,7 +64,8 @@ func (w *Watcher) reloadClients(rescanAuth bool, affectedOAuthProviders []string
 	}
 
 	geminiAPIKeyCount, vertexCompatAPIKeyCount, claudeAPIKeyCount, codexAPIKeyCount, xaiAPIKeyCount, metaAPIKeyCount, typesafeAPIKeyCount, openAICompatCount := BuildAPIKeyClients(cfg)
-	totalAPIKeyClients := geminiAPIKeyCount + vertexCompatAPIKeyCount + claudeAPIKeyCount + codexAPIKeyCount + xaiAPIKeyCount + metaAPIKeyCount + typesafeAPIKeyCount + openAICompatCount
+	decisionOpenAIKeyCount, decisionGeminiKeyCount := BuildDecisionKeyClients(cfg)
+	totalAPIKeyClients := geminiAPIKeyCount + vertexCompatAPIKeyCount + claudeAPIKeyCount + codexAPIKeyCount + xaiAPIKeyCount + metaAPIKeyCount + typesafeAPIKeyCount + decisionOpenAIKeyCount + decisionGeminiKeyCount + openAICompatCount
 	log.Debugf("loaded %d API key clients", totalAPIKeyClients)
 
 	var authFileCount int
@@ -211,7 +212,7 @@ func (w *Watcher) reloadClients(rescanAuth bool, affectedOAuthProviders []string
 		w.authRescanMu.Unlock()
 	}
 
-	totalNewClients := authFileCount + geminiAPIKeyCount + vertexCompatAPIKeyCount + claudeAPIKeyCount + codexAPIKeyCount + xaiAPIKeyCount + metaAPIKeyCount + typesafeAPIKeyCount + openAICompatCount
+	totalNewClients := authFileCount + geminiAPIKeyCount + vertexCompatAPIKeyCount + claudeAPIKeyCount + codexAPIKeyCount + xaiAPIKeyCount + metaAPIKeyCount + typesafeAPIKeyCount + decisionOpenAIKeyCount + decisionGeminiKeyCount + openAICompatCount
 
 	if w.reloadCallback != nil {
 		log.Debugf("triggering server update callback before auth refresh")
@@ -221,7 +222,7 @@ func (w *Watcher) reloadClients(rescanAuth bool, affectedOAuthProviders []string
 	w.refreshAuthState(forceAuthRefresh)
 	redisqueue.NotifyUsageRefresh()
 
-	log.Infof("full client load complete - %d clients (%d auth files + %d Gemini API keys + %d Vertex API keys + %d Claude API keys + %d Codex keys + %d xAI keys + %d Meta API keys + %d TypeSafe API keys + %d OpenAI-compat)",
+	log.Infof("full client load complete - %d clients (%d auth files + %d Gemini API keys + %d Vertex API keys + %d Claude API keys + %d Codex keys + %d xAI keys + %d Meta API keys + %d TypeSafe API keys + %d OpenAI Decisions keys + %d Gemini Decisions keys + %d OpenAI-compat)",
 		totalNewClients,
 		authFileCount,
 		geminiAPIKeyCount,
@@ -231,6 +232,8 @@ func (w *Watcher) reloadClients(rescanAuth bool, affectedOAuthProviders []string
 		xaiAPIKeyCount,
 		metaAPIKeyCount,
 		typesafeAPIKeyCount,
+		decisionOpenAIKeyCount,
+		decisionGeminiKeyCount,
 		openAICompatCount,
 	)
 }
@@ -611,6 +614,14 @@ func BuildAPIKeyClients(cfg *config.Config) (int, int, int, int, int, int, int, 
 		}
 	}
 	return geminiAPIKeyCount, vertexCompatAPIKeyCount, claudeAPIKeyCount, codexAPIKeyCount, xaiAPIKeyCount, metaAPIKeyCount, typesafeAPIKeyCount, openAICompatCount
+}
+
+// BuildDecisionKeyClients counts configured OpenAI and Gemini Decisions API key entries.
+func BuildDecisionKeyClients(cfg *config.Config) (int, int) {
+	if cfg == nil {
+		return 0, 0
+	}
+	return len(cfg.DecisionOpenAIKey), len(cfg.DecisionGeminiKey)
 }
 
 func (w *Watcher) persistConfigAsync() {

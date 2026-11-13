@@ -50,6 +50,16 @@ func TestDecisionCredentialPolicyRequiresDedicatedProvider(t *testing.T) {
 			policy: CredentialPolicyOpenAIDecisionsV1,
 			auth:   &Auth{Provider: "decision-gemini", Attributes: map[string]string{AttributeAPIKey: "key"}},
 		},
+		{
+			name:   "Wildcard excluded model disables OpenAI decision key",
+			policy: CredentialPolicyOpenAIDecisionsV1,
+			auth:   &Auth{Provider: "decision-openai", Attributes: map[string]string{AttributeAPIKey: "key", "excluded_models": "*"}},
+		},
+		{
+			name:   "Wildcard excluded model disables Gemini decision key",
+			policy: CredentialPolicyGeminiDecisionsV1,
+			auth:   &Auth{Provider: "decision-gemini", Attributes: map[string]string{AttributeAPIKey: "key", "excluded_models": "other,*"}},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if actual := credentialPolicyAllows(test.policy, test.auth); actual != test.expected {

@@ -63,10 +63,30 @@ func credentialPolicyAllows(policy string, auth *Auth) bool {
 	case CredentialPolicyOpenAIDecisionsV1:
 		// Decision credentials live in their own provider group, so group
 		// membership already excludes ordinary Codex chat credentials.
-		return strings.EqualFold(strings.TrimSpace(auth.Provider), decisionOpenAIProvider) && auth.AuthKind() == AuthKindAPIKey
+		return strings.EqualFold(strings.TrimSpace(auth.Provider), decisionOpenAIProvider) &&
+			auth.AuthKind() == AuthKindAPIKey &&
+			!authWildcardExcluded(auth)
 	case CredentialPolicyGeminiDecisionsV1:
-		return strings.EqualFold(strings.TrimSpace(auth.Provider), decisionGeminiProvider) && auth.AuthKind() == AuthKindAPIKey
+		return strings.EqualFold(strings.TrimSpace(auth.Provider), decisionGeminiProvider) &&
+			auth.AuthKind() == AuthKindAPIKey &&
+			!authWildcardExcluded(auth)
 	default:
 		return false
 	}
+}
+
+func authWildcardExcluded(auth *Auth) bool {
+	if auth == nil || auth.Attributes == nil {
+		return false
+	}
+	raw := strings.TrimSpace(auth.Attributes["excluded_models"])
+	if raw == "" {
+		return false
+	}
+	for _, entry := range strings.Split(raw, ",") {
+		if strings.TrimSpace(entry) == "*" {
+			return true
+		}
+	}
+	return false
 }

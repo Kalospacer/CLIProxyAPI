@@ -2,32 +2,33 @@
 
 CLIProxyAPI exposes three independent decision protocols. It forwards each request body and response unchanged; it does not translate JEV, OpenAI, and Gemini into one another. These APIs are not chat endpoints and do not support streaming.
 
-| Provider | Downstream endpoint | Upstream endpoint | Eligible credentials |
+| Provider | Downstream endpoint | Upstream endpoint | v8 credential family |
 | --- | --- | --- | --- |
-| TypeSafe JEV | `POST /v1/systemone` | `POST {base-url}/v1/systemone` | `api-keys.typesafe` API keys |
-| OpenAI Decisions | `POST /v1/decisions` or `POST /openai/v1/decisions` | `POST https://api.openai.com/v1/decisions` | `api-keys.codex` API keys using `https://api.openai.com` |
-| Gemini Decisions | `POST /v1beta/decisions` | `POST https://generativelanguage.googleapis.com/v1beta/decisions` | `api-keys.gemini` API keys using `https://generativelanguage.googleapis.com` |
+| TypeSafe JEV | `POST /v1/systemone` | `POST {base-url}/v1/systemone` | `api-keys.typesafe` |
+| OpenAI Decisions | `POST /v1/decisions` or `POST /openai/v1/decisions` | `POST https://api.openai.com/v1/decisions` | `api-keys.decision-openai` |
+| Gemini Decisions | `POST /v1beta/decisions` | `POST https://generativelanguage.googleapis.com/v1beta/decisions` | `api-keys.decision-gemini` |
 
-Decision credential selection bypasses the chat model catalog because `gpt-6-luna` and `gemini-decision-1` are specialized models. The request's `model` is still sent unchanged and recorded for failures. Only API keys for the official provider are eligible: Codex OAuth, Gemini OAuth, Mistral and other third-party Codex groups, and Gemini's `/v1beta/openai` chat-compatibility endpoint are excluded.
+Each decision protocol has its own v8 credential family (`api-keys.decision-openai` and `api-keys.decision-gemini`), isolated from ordinary Codex and Gemini chat credentials. Chat credentials never serve decision routes, and decision credentials do not serve chat completions. Credential selection bypasses the chat model catalog so new decision models pass through, while honoring wildcard `"*"` entries in `excluded-models` to disable a key.
 
 Credentials rotate on transport failures, `401`, `403`, `429`, and `5xx`. TypeSafe retains its narrower 403 behavior: only `detail.error_type=authentication_error` rotates. Other 4xx responses, including Gemini invalid-argument `400`, return unchanged without cooling a credential. A `Retry-After` response is retained when the final upstream response is `429`.
 
-No additional provider family or model declaration is required. Add an official API key using the existing v8 groups:
+Add credentials under the dedicated v8 families (or legacy `decision-openai-api-key` / `decision-gemini-api-key`):
 
 ```yaml
 api-keys:
-  codex:
-    - name: openai-official
-      base-url: "https://api.openai.com/v1"
+  decision-openai:
+    - name: openai-decisions
+      base-url: "https://api.openai.com"
       keys:
         - api-key: "sk-..."
-  gemini:
-    - name: ai-studio
+  decision-gemini:
+    - name: gemini-decisions
       base-url: "https://generativelanguage.googleapis.com"
-      api-key: "AIza..."
+      keys:
+        - api-key: "AIza..."
 ```
 
-An empty base URL selects the same official defaults. Use `https://generativelanguage.googleapis.com/v1beta` or `https://api.openai.com/v1` if preferred; the proxy does not append `/v1` or `/v1beta` twice.
+An empty `base-url` selects the official upstream default. Use `https://generativelanguage.googleapis.com/v1beta` or `https://api.openai.com/v1` if preferred; the proxy does not append `/v1` or `/v1beta` twice.
 
 ## OpenAI example
 
@@ -36,7 +37,7 @@ curl -X POST "http://127.0.0.1:8317/v1/decisions" \
   -H "Authorization: Bearer CPA_CLIENT_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-6-luna",
+    "model": "gpt-6-luna-decision",
     "input": "I was charged twice for my order.",
     "questions": [{
       "type": "predicate",

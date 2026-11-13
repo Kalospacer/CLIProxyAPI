@@ -524,15 +524,18 @@ func BuildConfigChangeDetails(oldCfg, newCfg *config.Config) []string {
 			if oldModels.hash != newModels.hash {
 				changes = append(changes, fmt.Sprintf("typesafe[%d].models: updated (%d -> %d entries)", i, oldModels.count, newModels.count))
 			}
-			oldExcluded := SummarizeExcludedModels(o.ExcludedModels)
-			newExcluded := SummarizeExcludedModels(n.ExcludedModels)
-			if oldExcluded.hash != newExcluded.hash {
-				changes = append(changes, fmt.Sprintf("typesafe[%d].excluded-models: updated (%d -> %d entries)", i, oldExcluded.count, newExcluded.count))
-			}
-		}
-	}
+   oldExcluded := SummarizeExcludedModels(o.ExcludedModels)
+   newExcluded := SummarizeExcludedModels(n.ExcludedModels)
+   if oldExcluded.hash != newExcluded.hash {
+    changes = append(changes, fmt.Sprintf("typesafe[%d].excluded-models: updated (%d -> %d entries)", i, oldExcluded.count, newExcluded.count))
+   }
+  }
+ }
 
-	if entries, _ := DiffOAuthExcludedModelChanges(oldCfg.OAuthExcludedModels, newCfg.OAuthExcludedModels); len(entries) > 0 {
+changes = diffCodexStyleKeyChanges(changes, "decision-openai", "decision-openai-api-key", oldCfg.DecisionOpenAIKey, newCfg.DecisionOpenAIKey)
+changes = diffCodexStyleKeyChanges(changes, "decision-gemini", "decision-gemini-api-key", oldCfg.DecisionGeminiKey, newCfg.DecisionGeminiKey)
+
+if entries, _ := DiffOAuthExcludedModelChanges(oldCfg.OAuthExcludedModels, newCfg.OAuthExcludedModels); len(entries) > 0 {
 		changes = append(changes, entries...)
 	}
 	if entries, _ := DiffOAuthModelAliasChanges(oldCfg.OAuthModelAlias, newCfg.OAuthModelAlias); len(entries) > 0 {
@@ -791,4 +794,46 @@ func formatURL(raw string) string {
 		return host
 	}
 	return scheme + "://" + host
+}
+
+func diffCodexStyleKeyChanges(changes []string, prefix, countKey string, oldEntries, newEntries []config.CodexKey) []string {
+	if len(oldEntries) != len(newEntries) {
+		return append(changes, fmt.Sprintf("%s count: %d -> %d", countKey, len(oldEntries), len(newEntries)))
+	}
+	for i := range oldEntries {
+		o := oldEntries[i]
+		n := newEntries[i]
+		if strings.TrimSpace(o.BaseURL) != strings.TrimSpace(n.BaseURL) {
+			changes = append(changes, fmt.Sprintf("%s[%d].base-url: %s -> %s", prefix, i, formatURL(o.BaseURL), formatURL(n.BaseURL)))
+		}
+		if strings.TrimSpace(o.ProxyURL) != strings.TrimSpace(n.ProxyURL) {
+			changes = append(changes, fmt.Sprintf("%s[%d].proxy-url: %s -> %s", prefix, i, formatProxyURL(o.ProxyURL), formatProxyURL(n.ProxyURL)))
+		}
+		changes = appendConnectionPoolChanges(changes, fmt.Sprintf("%s[%d].connection-pool", prefix, i), o.ConnectionPool, n.ConnectionPool)
+		if strings.TrimSpace(o.Prefix) != strings.TrimSpace(n.Prefix) {
+			changes = append(changes, fmt.Sprintf("%s[%d].prefix: %s -> %s", prefix, i, strings.TrimSpace(o.Prefix), strings.TrimSpace(n.Prefix)))
+		}
+		if o.Priority != n.Priority {
+			changes = append(changes, fmt.Sprintf("%s[%d].priority: %d -> %d", prefix, i, o.Priority, n.Priority))
+		}
+		changes = appendOptionalBoolChange(changes, fmt.Sprintf("%s[%d].disable-cooling", prefix, i), o.DisableCooling, n.DisableCooling)
+		changes = appendOptionalIntChange(changes, fmt.Sprintf("%s[%d].request-retry", prefix, i), o.RequestRetry, n.RequestRetry)
+		if strings.TrimSpace(o.APIKey) != strings.TrimSpace(n.APIKey) {
+			changes = append(changes, fmt.Sprintf("%s[%d].api-key: updated", prefix, i))
+		}
+		if !equalStringMap(o.Headers, n.Headers) {
+			changes = append(changes, fmt.Sprintf("%s[%d].headers: updated", prefix, i))
+		}
+		oldModels := SummarizeCodexModels(o.Models)
+		newModels := SummarizeCodexModels(n.Models)
+		if oldModels.hash != newModels.hash {
+			changes = append(changes, fmt.Sprintf("%s[%d].models: updated (%d -> %d entries)", prefix, i, oldModels.count, newModels.count))
+		}
+		oldExcluded := SummarizeExcludedModels(o.ExcludedModels)
+		newExcluded := SummarizeExcludedModels(n.ExcludedModels)
+		if oldExcluded.hash != newExcluded.hash {
+			changes = append(changes, fmt.Sprintf("%s[%d].excluded-models: updated (%d -> %d entries)", prefix, i, oldExcluded.count, newExcluded.count))
+		}
+	}
+	return changes
 }
