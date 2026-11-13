@@ -21,7 +21,7 @@ import (
 const (
 	openAIDecisionsDefaultBaseURL = "https://api.openai.com"
 	geminiDecisionsDefaultBaseURL = "https://generativelanguage.googleapis.com"
-	decisionsMaxAttempts         = 16
+	decisionsMaxAttempts          = 16
 )
 
 // decisionProtocol describes one native decision API. Decision models are not

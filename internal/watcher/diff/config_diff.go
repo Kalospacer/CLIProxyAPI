@@ -524,18 +524,18 @@ func BuildConfigChangeDetails(oldCfg, newCfg *config.Config) []string {
 			if oldModels.hash != newModels.hash {
 				changes = append(changes, fmt.Sprintf("typesafe[%d].models: updated (%d -> %d entries)", i, oldModels.count, newModels.count))
 			}
-   oldExcluded := SummarizeExcludedModels(o.ExcludedModels)
-   newExcluded := SummarizeExcludedModels(n.ExcludedModels)
-   if oldExcluded.hash != newExcluded.hash {
-    changes = append(changes, fmt.Sprintf("typesafe[%d].excluded-models: updated (%d -> %d entries)", i, oldExcluded.count, newExcluded.count))
-   }
-  }
- }
+			oldExcluded := SummarizeExcludedModels(o.ExcludedModels)
+			newExcluded := SummarizeExcludedModels(n.ExcludedModels)
+			if oldExcluded.hash != newExcluded.hash {
+				changes = append(changes, fmt.Sprintf("typesafe[%d].excluded-models: updated (%d -> %d entries)", i, oldExcluded.count, newExcluded.count))
+			}
+		}
+	}
 
-changes = diffCodexStyleKeyChanges(changes, "decision-openai", "decision-openai-api-key", oldCfg.DecisionOpenAIKey, newCfg.DecisionOpenAIKey)
-changes = diffCodexStyleKeyChanges(changes, "decision-gemini", "decision-gemini-api-key", oldCfg.DecisionGeminiKey, newCfg.DecisionGeminiKey)
+	changes = diffCodexStyleKeyChanges(changes, "decision-openai", "decision-openai-api-key", oldCfg.DecisionOpenAIKey, newCfg.DecisionOpenAIKey)
+	changes = diffCodexStyleKeyChanges(changes, "decision-gemini", "decision-gemini-api-key", oldCfg.DecisionGeminiKey, newCfg.DecisionGeminiKey)
 
-if entries, _ := DiffOAuthExcludedModelChanges(oldCfg.OAuthExcludedModels, newCfg.OAuthExcludedModels); len(entries) > 0 {
+	if entries, _ := DiffOAuthExcludedModelChanges(oldCfg.OAuthExcludedModels, newCfg.OAuthExcludedModels); len(entries) > 0 {
 		changes = append(changes, entries...)
 	}
 	if entries, _ := DiffOAuthModelAliasChanges(oldCfg.OAuthModelAlias, newCfg.OAuthModelAlias); len(entries) > 0 {
