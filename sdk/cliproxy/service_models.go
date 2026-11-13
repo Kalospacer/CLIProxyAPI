@@ -9,6 +9,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/constant"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/modelconfig"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
@@ -219,13 +220,20 @@ func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, c
 		if strings.EqualFold(provider, executor.DecisionGeminiProvider) {
 			defaultModel = "gemini-decision-1"
 		}
-		if entry := resolveConfigDecisionKey(cfg, a, provider); entry != nil {
-			if len(entry.Models) > 0 {
-				models = buildConfigModels(entry.Models, "openai", "openai", provider)
-			} else {
-				models = buildConfigModels([]config.CodexModel{{Name: defaultModel, Alias: defaultModel}}, "openai", "openai", provider)
-			}
+		if entry := resolveConfigDecisionKey(cfg, a, provider); entry != nil && len(entry.Models) > 0 {
+			models = buildConfigModels(entry.Models, "openai", "openai", provider)
 			excluded = entry.ExcludedModels
+		} else {
+			models = []*ModelInfo{{
+				ID:              defaultModel,
+				MetadataModelID: defaultModel,
+				Object:          "model",
+				Created:         time.Now().Unix(),
+				OwnedBy:         "openai",
+				Type:            provider,
+				DisplayName:     defaultModel,
+				UserDefined:     true,
+			}}
 		}
 		models = applyExcludedModels(models, excluded)
 	case "typesafe":
