@@ -13,12 +13,13 @@ import (
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
-// Decision provider identifiers. Each native decision protocol keeps its own
-// provider so decision credentials never serve chat requests built from the
-// ordinary Gemini or Codex credential groups.
+// Decision provider identifiers re-exported from the auth package, which owns
+// the canonical spelling. Each native decision protocol keeps its own provider
+// so decision credentials never serve chat requests built from the ordinary
+// Gemini or Codex credential groups.
 const (
-	DecisionOpenAIProvider = "decision-openai"
-	DecisionGeminiProvider = "decision-gemini"
+	DecisionOpenAIProvider = cliproxyauth.DecisionOpenAIProvider
+	DecisionGeminiProvider = cliproxyauth.DecisionGeminiProvider
 )
 
 var _ cliproxyauth.ProviderExecutor = (*DecisionExecutor)(nil)

@@ -296,8 +296,8 @@ func (s *ConfigSynthesizer) synthesizeTypeSafeKeys(ctx *SynthesisContext) []*cor
 // protocol keeps its own provider so decision credentials never serve chat
 // requests built from ordinary Gemini or Codex groups.
 func (s *ConfigSynthesizer) synthesizeDecisionKeys(ctx *SynthesisContext) []*coreauth.Auth {
-	out := s.synthesizeCodexStyleKeys(ctx, ctx.Config.DecisionOpenAIKey, "decision-openai")
-	return append(out, s.synthesizeCodexStyleKeys(ctx, ctx.Config.DecisionGeminiKey, "decision-gemini")...)
+	out := s.synthesizeCodexStyleKeys(ctx, ctx.Config.DecisionOpenAIKey, coreauth.DecisionOpenAIProvider)
+	return append(out, s.synthesizeCodexStyleKeys(ctx, ctx.Config.DecisionGeminiKey, coreauth.DecisionGeminiProvider)...)
 }
 
 func (s *ConfigSynthesizer) synthesizeCodexStyleKeys(ctx *SynthesisContext, entries []config.CodexKey, provider string) []*coreauth.Auth {
@@ -316,9 +316,9 @@ func (s *ConfigSynthesizer) synthesizeCodexStyleKeys(ctx *SynthesisContext, entr
 		if key := strings.TrimSpace(entry.APIKey); key != "" {
 			creds = append(creds, codexCredential{key: key, weight: entry.Weight})
 		}
-		// Codex, TypeSafe, and xAI bundled credentials resolve back to their
-		// parent config entry so the config index, prefix, effective proxy, and
-		// base URL keep that entry's model mapping and request headers.
+		// Codex, TypeSafe, xAI, and decision bundled credentials resolve back to
+		// their parent config entry so the config index, prefix, effective proxy,
+		// and base URL keep that entry's model mapping and request headers.
 		if provider == "codex" || provider == "typesafe" || provider == "xai" || strings.HasPrefix(provider, "decision-") {
 			for _, bundled := range entry.APIKeyEntries {
 				key := strings.TrimSpace(bundled.APIKey)

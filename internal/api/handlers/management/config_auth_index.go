@@ -446,7 +446,7 @@ func (h *Handler) injectV8APIKeyAuthIndexesLocked(root *yaml.Node, data []byte) 
 	}
 
 	authByConfigIndex := make(map[string]map[string]*coreauth.Auth)
-	for _, p := range []string{"codex", "claude", "xai", "meta", "decision-openai", "decision-gemini"} {
+	for _, p := range []string{"codex", "claude", "xai", "meta", "typesafe", "decision-openai", "decision-gemini"} {
 		authByConfigIndex[p] = make(map[string]*coreauth.Auth)
 		for _, a := range authsByProvider[p] {
 			if a != nil && a.Attributes != nil {
@@ -550,14 +550,17 @@ func (h *Handler) injectV8APIKeyAuthIndexesLocked(root *yaml.Node, data []byte) 
 			continue
 		}
 
-		if providerName == "codex" || providerName == "xai" || providerName == "decision-openai" || providerName == "decision-gemini" {
+		if providerName == "codex" || providerName == "xai" || providerName == "typesafe" || providerName == "decision-openai" || providerName == "decision-gemini" {
 			validIdx := 0
 			for _, group := range groupsNode.Content {
 				if group == nil || group.Kind != yaml.MappingNode {
 					continue
 				}
 				groupBase := strings.TrimSpace(yamlMapScalar(group, "base-url"))
-				if (providerName == "codex" || providerName == "xai") && groupBase == "" {
+				// TypeSafe and the decision families default the base-url, so only
+				// codex and xAI require it on the group.
+				requiresBaseURL := providerName == "codex" || providerName == "xai"
+				if requiresBaseURL && groupBase == "" {
 					continue
 				}
 				keysNode := configV8Node(group, []string{"keys"})

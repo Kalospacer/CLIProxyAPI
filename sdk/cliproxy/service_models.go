@@ -663,7 +663,7 @@ func resolveConfigDecisionKey(cfg *config.Config, auth *coreauth.Auth, provider 
 		return nil
 	}
 	entries := cfg.DecisionOpenAIKey
-	if strings.EqualFold(strings.TrimSpace(provider), "decision-gemini") {
+	if strings.EqualFold(strings.TrimSpace(provider), executor.DecisionGeminiProvider) {
 		entries = cfg.DecisionGeminiKey
 	}
 	return resolveConfigCodexStyleKey(auth, entries, false)

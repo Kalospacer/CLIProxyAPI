@@ -31,16 +31,10 @@ func validateCredentialWeightYAML(data []byte) error {
 	if err != nil {
 		return err
 	}
-	families := map[string]struct{}{
-		"gemini-api-key": {}, "interactions-api-key": {}, "claude-api-key": {},
-		"vertex-api-key": {}, "codex-api-key": {}, "xai-api-key": {}, "meta-api-key": {},
-		"typesafe-api-key": {}, "decision-openai-api-key": {}, "decision-gemini-api-key": {},
-	}
 	for index := 0; root != nil && root.Kind == yaml.MappingNode && index+1 < len(root.Content); index += 2 {
 		name := root.Content[index].Value
 		value := root.Content[index+1]
-		if _, ok := families[name]; ok {
-			_, allowBundled := bundledFamilies[name]
+		if allowBundled, ok := apiKeyFamilies[name]; ok {
 			if errValidate := validateWeightSequenceNode(value, name, allowBundled); errValidate != nil {
 				return errValidate
 			}
@@ -55,10 +49,14 @@ func validateCredentialWeightYAML(data []byte) error {
 	return nil
 }
 
-// bundledFamilies lists the provider families whose key entries may also carry
-// bundled api-key-entries credentials.
-var bundledFamilies = map[string]struct{}{"codex-api-key": {}, "xai-api-key": {}, "typesafe-api-key": {},
-	"decision-openai-api-key": {}, "decision-gemini-api-key": {}}
+// apiKeyFamilies lists every API-key family by its YAML sequence name; the
+// value reports whether entries may also carry bundled api-key-entries
+// credentials.
+var apiKeyFamilies = map[string]bool{
+	"gemini-api-key": false, "interactions-api-key": false, "claude-api-key": false,
+	"vertex-api-key": false, "codex-api-key": true, "xai-api-key": true, "meta-api-key": false,
+	"typesafe-api-key": true, "decision-openai-api-key": true, "decision-gemini-api-key": true,
+}
 
 func validateWeightSequenceNode(sequence *yaml.Node, path string, allowBundled bool) error {
 	if sequence == nil || sequence.Kind != yaml.SequenceNode {

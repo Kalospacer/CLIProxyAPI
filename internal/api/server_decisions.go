@@ -96,10 +96,11 @@ func decisionUpstreamURL(protocol decisionProtocol, current *auth.Auth) string {
 			return baseURL
 		}
 	}
-	if protocol.provider == executor.DecisionGeminiProvider && strings.HasSuffix(baseURL, "/v1beta") {
-		return baseURL + protocol.unversionedPath
-	}
-	if protocol.provider == executor.DecisionOpenAIProvider && strings.HasSuffix(baseURL, "/v1") {
+	// A configured base-url that already carries the protocol's version segment
+	// keeps it and gains only the resource path. The segment is derived from the
+	// versioned path so each protocol declares its difference in the table.
+	versionSegment := strings.SplitN(strings.TrimPrefix(protocol.versionedPath, "/"), "/", 2)[0]
+	if strings.HasSuffix(baseURL, "/"+versionSegment) {
 		return baseURL + protocol.unversionedPath
 	}
 	return baseURL + protocol.versionedPath

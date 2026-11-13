@@ -341,42 +341,7 @@ func (cfg *Config) SanitizeTypeSafeKeys() {
 	if cfg == nil {
 		return
 	}
-	cfg.TypeSafeKey = sanitizeTypeSafeKeyEntries(cfg.TypeSafeKey)
-}
-
-func sanitizeTypeSafeKeyEntries(entries []TypeSafeKey) []TypeSafeKey {
-	if len(entries) == 0 {
-		return entries
-	}
-	out := make([]TypeSafeKey, 0, len(entries))
-	for i := range entries {
-		e := entries[i]
-		e.APIKey = strings.TrimSpace(e.APIKey)
-		hasBundledKey := false
-		for j := range e.APIKeyEntries {
-			e.APIKeyEntries[j].APIKey = strings.TrimSpace(e.APIKeyEntries[j].APIKey)
-			if e.APIKeyEntries[j].APIKey != "" {
-				hasBundledKey = true
-			}
-		}
-		// typesafe-api-key requires a valid API key (Bearer token for
-		// api.typesafe.ai); bundled api-key-entries may carry the keys instead
-		// of the top-level api-key.
-		if e.APIKey == "" && !hasBundledKey {
-			continue
-		}
-		e.Prefix = normalizeModelPrefix(e.Prefix)
-		e.BaseURL = strings.TrimSpace(e.BaseURL)
-		if e.BaseURL == "" {
-			e.BaseURL = "https://api.typesafe.ai"
-		}
-		e.Headers = NormalizeHeaders(e.Headers)
-		e.ExcludedModels = NormalizeExcludedModels(e.ExcludedModels)
-		e.AlphaSearch = false
-		e.Websockets = false
-		out = append(out, e)
-	}
-	return out
+	cfg.TypeSafeKey = sanitizeCodexStyleKeyEntries(cfg.TypeSafeKey, typeSafeDefaultBaseURL)
 }
 
 // SanitizeDecisionKeys normalizes native decision API key entries, defaulting
@@ -385,18 +350,18 @@ func (cfg *Config) SanitizeDecisionKeys() {
 	if cfg == nil {
 		return
 	}
-	cfg.DecisionOpenAIKey = sanitizeDecisionKeyEntries(cfg.DecisionOpenAIKey, decisionOpenAIDefaultBaseURL)
-	cfg.DecisionGeminiKey = sanitizeDecisionKeyEntries(cfg.DecisionGeminiKey, decisionGeminiDefaultBaseURL)
+	cfg.DecisionOpenAIKey = sanitizeCodexStyleKeyEntries(cfg.DecisionOpenAIKey, decisionOpenAIDefaultBaseURL)
+	cfg.DecisionGeminiKey = sanitizeCodexStyleKeyEntries(cfg.DecisionGeminiKey, decisionGeminiDefaultBaseURL)
 }
 
-// decisionOpenAIDefaultBaseURL and decisionGeminiDefaultBaseURL are the official
-// upstream roots used when a decision credential omits base-url.
+// Default upstream roots used when a grouped-key credential omits base-url.
 const (
 	decisionOpenAIDefaultBaseURL = "https://api.openai.com"
 	decisionGeminiDefaultBaseURL = "https://generativelanguage.googleapis.com"
+	typeSafeDefaultBaseURL       = "https://api.typesafe.ai"
 )
 
-func sanitizeDecisionKeyEntries(entries []CodexKey, defaultBaseURL string) []CodexKey {
+func sanitizeCodexStyleKeyEntries(entries []CodexKey, defaultBaseURL string) []CodexKey {
 	if len(entries) == 0 {
 		return entries
 	}
@@ -411,6 +376,8 @@ func sanitizeDecisionKeyEntries(entries []CodexKey, defaultBaseURL string) []Cod
 				hasBundledKey = true
 			}
 		}
+		// These families require a usable API key; bundled api-key-entries may
+		// carry the keys instead of the top-level api-key.
 		if e.APIKey == "" && !hasBundledKey {
 			continue
 		}

@@ -20,11 +20,12 @@ const (
 	CredentialPolicyGeminiDecisionsV1 = "gemini_decisions_v1"
 )
 
-// Decision provider identifiers. These are duplicated from the executor package
-// to keep this portable policy helper free of internal imports.
+// Decision provider identifiers. They live in the auth package so every
+// consumer shares one spelling; the executor package cannot host them because
+// executors import auth, and auth importing executors would create a cycle.
 const (
-	decisionOpenAIProvider = "decision-openai"
-	decisionGeminiProvider = "decision-gemini"
+	DecisionOpenAIProvider = "decision-openai"
+	DecisionGeminiProvider = "decision-gemini"
 )
 
 func normalizeCredentialPolicy(policy string) string {
@@ -63,11 +64,11 @@ func credentialPolicyAllows(policy string, auth *Auth) bool {
 	case CredentialPolicyOpenAIDecisionsV1:
 		// Decision credentials live in their own provider group, so group
 		// membership already excludes ordinary Codex chat credentials.
-		return strings.EqualFold(strings.TrimSpace(auth.Provider), decisionOpenAIProvider) &&
+		return strings.EqualFold(strings.TrimSpace(auth.Provider), DecisionOpenAIProvider) &&
 			auth.AuthKind() == AuthKindAPIKey &&
 			!authWildcardExcluded(auth)
 	case CredentialPolicyGeminiDecisionsV1:
-		return strings.EqualFold(strings.TrimSpace(auth.Provider), decisionGeminiProvider) &&
+		return strings.EqualFold(strings.TrimSpace(auth.Provider), DecisionGeminiProvider) &&
 			auth.AuthKind() == AuthKindAPIKey &&
 			!authWildcardExcluded(auth)
 	default:
