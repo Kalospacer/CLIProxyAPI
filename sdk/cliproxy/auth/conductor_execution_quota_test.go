@@ -382,3 +382,31 @@ func TestApplyRequestAfterAuthInterceptor_OverridesPath_Issue6196(t *testing.T) 
 		t.Fatalf("final request path = %v, want /v1/images/generations", gotPath)
 	}
 }
+
+func TestApplyRequestAfterAuthInterceptor_PassesSelectedProviderMetadata(t *testing.T) {
+	const selectedProvider = "openai-compatible-mistral"
+	const affinityProvider = "mixed"
+
+	var seenProvider any
+	opts := cliproxyexecutor.Options{
+		Metadata: map[string]any{
+			cliproxyexecutor.SessionAffinityProviderMetadataKey: affinityProvider,
+		},
+		RequestAfterAuthInterceptor: func(_ context.Context, req cliproxyexecutor.RequestAfterAuthInterceptRequest) cliproxyexecutor.RequestAfterAuthInterceptResponse {
+			seenProvider = req.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey]
+			req.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey] = "plugin-mutation-must-not-leak"
+			return cliproxyexecutor.RequestAfterAuthInterceptResponse{}
+		},
+	}
+
+	_, finalOpts, err := applyRequestAfterAuthInterceptor(context.Background(), nil, selectedProvider, cliproxyexecutor.Request{}, opts, "shared-model")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if seenProvider != selectedProvider {
+		t.Fatalf("interceptor provider = %v, want %q", seenProvider, selectedProvider)
+	}
+	if got := finalOpts.Metadata[cliproxyexecutor.SessionAffinityProviderMetadataKey]; got != affinityProvider {
+		t.Fatalf("original metadata provider = %v, want %q", got, affinityProvider)
+	}
+}

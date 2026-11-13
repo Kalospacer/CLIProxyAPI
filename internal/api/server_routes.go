@@ -91,7 +91,8 @@ func (s *Server) setupRoutes() {
 		v1.POST("/tts", openaiHandlers.XAITTS)
 		v1.POST("/messages", claudeCodeHandlers.ClaudeMessages)
 		v1.POST("/messages/count_tokens", claudeCodeHandlers.ClaudeCountTokens)
-		v1.POST("/systemone", s.systemOneHandler)
+		v1.POST("/systemone", s.decisionProtocolHandler(systemOneProtocol))
+		v1.POST("/decisions", s.decisionProtocolHandler(openAIDecisionsProtocol))
 		v1.GET("/responses", openaiResponsesHandlers.ResponsesWebsocket)
 		v1.POST("/responses", openaiResponsesHandlers.Responses)
 		v1.POST("/responses/compact", openaiResponsesHandlers.Compact)
@@ -125,6 +126,7 @@ func (s *Server) setupRoutes() {
 	openaiV1 := s.engine.Group("/openai/v1")
 	openaiV1.Use(AuthMiddleware(s.accessManager))
 	{
+		openaiV1.POST("/decisions", s.decisionProtocolHandler(openAIDecisionsProtocol))
 		openaiV1.POST("/videos", openaiHandlers.VideosCreate)
 		openaiV1.GET("/videos/:video_id/content", openaiHandlers.VideosContent)
 		openaiV1.GET("/videos/:video_id", openaiHandlers.VideosRetrieve)
@@ -146,6 +148,7 @@ func (s *Server) setupRoutes() {
 	{
 		v1beta.GET("/models", s.geminiModelsHandler(geminiHandlers))
 		v1beta.POST("/interactions", geminiHandlers.Interactions)
+		v1beta.POST("/decisions", s.decisionProtocolHandler(geminiDecisionsProtocol))
 		v1beta.POST("/models/*action", geminiHandlers.GeminiHandler)
 		v1beta.GET("/models/*action", s.geminiGetHandler(geminiHandlers))
 	}

@@ -10,6 +10,8 @@ Go 1.26+ proxy server providing OpenAI/Gemini/Claude/Codex compatible APIs with 
 - TypeSafe is part of the v8 API-key family map (`api-keys.typesafe`). Configuration reads must remain non-mutating; v8 writes migrate legacy TypeSafe keys and preserve parent/bundled key values.
 - Codex, xAI, and TypeSafe synthesize nested `api-key-entries`. Credential resolution must honor the entry's effective proxy override, configuration index, prefix, and base URL to retain the correct model mapping.
 - `config_v8_typesafe_test.go` covers the restored management frontend's GET/PUT list-replacement contract, invalid-weight atomicity, and reload snapshots. See `docs/typesafe-v8-frontend-contract.md` for verification and deployment boundaries.
+- JEV SystemOne must rotate credentials when a 403 response has `detail.error_type=authentication_error`; other 403 errors stay request-scoped. `server_systemone_test.go` covers the distinction.
+- Native decision protocols remain separate passthroughs: JEV uses `/v1/systemone`, OpenAI uses `/v1/decisions` (also `/openai/v1/decisions`), and Gemini uses `/v1beta/decisions`. Their shared handler in `server_decisions.go` bypasses the chat model catalog but restricts selection to official API-key credentials. See `docs/decisions-api.md`.
 
 ## 上游同步与插件契约
 

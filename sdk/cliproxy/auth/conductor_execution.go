@@ -208,6 +208,10 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 	if len(normalized) == 0 {
 		return cliproxyexecutor.Response{}, &Error{Code: "provider_not_found", Message: "no provider supplied"}
 	}
+	opts, errThread := withClaudeThreadAuth(ctx, normalized, req, opts)
+	if errThread != nil {
+		return cliproxyexecutor.Response{}, errThread
+	}
 	if m.HomeEnabled() {
 		resp, errHome := m.executeHome(ctx, normalized, req, opts, false)
 		return resp, unwrapExecutionBoundaryError(errHome)
@@ -348,6 +352,10 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 	if len(normalized) == 0 {
 		return nil, &Error{Code: "provider_not_found", Message: "no provider supplied"}
 	}
+	opts, errThread := withClaudeThreadAuth(ctx, normalized, req, opts)
+	if errThread != nil {
+		return nil, errThread
+	}
 
 	defaultRequestRetry, maxRetryCredentials, maxWait := m.retrySettings()
 
@@ -447,6 +455,10 @@ func applyRequestAfterAuthInterceptor(ctx context.Context, executor ProviderExec
 		return req, opts, nil
 	}
 	toFormat := requestToFormat(provider, executor, req, opts)
+	interceptorMetadata := cloneRequestMetadata(opts.Metadata)
+	if selectedProvider := strings.TrimSpace(provider); selectedProvider != "" {
+		interceptorMetadata[cliproxyexecutor.SessionAffinityProviderMetadataKey] = selectedProvider
+	}
 	resp := opts.RequestAfterAuthInterceptor(ctx, cliproxyexecutor.RequestAfterAuthInterceptRequest{
 		SourceFormat:   opts.SourceFormat,
 		ToFormat:       toFormat,
@@ -455,7 +467,7 @@ func applyRequestAfterAuthInterceptor(ctx context.Context, executor ProviderExec
 		Stream:         opts.Stream,
 		Headers:        cloneRequestHeaders(opts.Headers),
 		Body:           req.Payload,
-		Metadata:       opts.Metadata,
+		Metadata:       interceptorMetadata,
 	})
 	opts.Headers = mergeRequestHeaders(opts.Headers, resp.Headers, resp.ClearHeaders)
 	if len(resp.Body) > 0 {
