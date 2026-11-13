@@ -10,7 +10,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 )
@@ -69,20 +68,17 @@ func TestDecisionRoutesPreserveNativePayloadAndRotateAPIKeys(t *testing.T) {
 			}
 			manager.RegisterExecutor(providerExecutor)
 			for _, suffix := range []string{"expired", "working"} {
-				if errRegister := manager.Register(context.Background(), &auth.Auth{
+				if _, errRegister := manager.Register(context.Background(), &auth.Auth{
 					ID: test.provider + "-" + suffix, Provider: test.provider, Status: auth.StatusActive,
 					Attributes: map[string]string{auth.AttributeAPIKey: "decision-test-" + suffix},
 				}); errRegister != nil {
 					t.Fatalf("register test credential: %v", errRegister)
 				}
 			}
-			server.engine.Use(func(c *gin.Context) {
-				c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), "cliproxy.roundtripper", http.RoundTripper(rt)))
-				c.Next()
-			})
 			payload := []byte(`{"model":"` + test.model + `","input":"same input","questions":{"urgent":{"type":"noul","instructions":" urgent? "}},"unknown_native_field":{"keep":true}}`)
 			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodPost, test.route, bytes.NewReader(payload))
+			ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", http.RoundTripper(rt))
+			request := httptest.NewRequestWithContext(ctx, http.MethodPost, test.route, bytes.NewReader(payload))
 			request.Header.Set("Authorization", "Bearer test-key")
 			request.Header.Set("Content-Type", "application/json")
 			server.engine.ServeHTTP(recorder, request)
