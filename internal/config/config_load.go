@@ -312,6 +312,9 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 	// Sanitize TypeSafe AI keys.
 	cfg.SanitizeTypeSafeKeys()
 
+	// Sanitize native decision API keys.
+	cfg.SanitizeDecisionKeys()
+
 	// Sanitize Codex header defaults.
 	cfg.SanitizeCodexHeaderDefaults()
 

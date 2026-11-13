@@ -109,6 +109,8 @@ func (s *ConfigSynthesizer) Synthesize(ctx *SynthesisContext) ([]*coreauth.Auth,
 	out = append(out, s.synthesizeMetaKeys(ctx)...)
 	// TypeSafe AI API Keys
 	out = append(out, s.synthesizeTypeSafeKeys(ctx)...)
+	// Native decision API keys
+	out = append(out, s.synthesizeDecisionKeys(ctx)...)
 	// OpenAI-compat
 	out = append(out, s.synthesizeOpenAICompat(ctx)...)
 	// Vertex-compat
@@ -290,6 +292,14 @@ func (s *ConfigSynthesizer) synthesizeTypeSafeKeys(ctx *SynthesisContext) []*cor
 	return s.synthesizeCodexStyleKeys(ctx, ctx.Config.TypeSafeKey, "typesafe")
 }
 
+// synthesizeDecisionKeys creates Auth entries for the native decision APIs. Each
+// protocol keeps its own provider so decision credentials never serve chat
+// requests built from ordinary Gemini or Codex groups.
+func (s *ConfigSynthesizer) synthesizeDecisionKeys(ctx *SynthesisContext) []*coreauth.Auth {
+	out := s.synthesizeCodexStyleKeys(ctx, ctx.Config.DecisionOpenAIKey, "decision-openai")
+	return append(out, s.synthesizeCodexStyleKeys(ctx, ctx.Config.DecisionGeminiKey, "decision-gemini")...)
+}
+
 func (s *ConfigSynthesizer) synthesizeCodexStyleKeys(ctx *SynthesisContext, entries []config.CodexKey, provider string) []*coreauth.Auth {
 	now := ctx.Now
 	idGen := ctx.IDGenerator
@@ -309,7 +319,7 @@ func (s *ConfigSynthesizer) synthesizeCodexStyleKeys(ctx *SynthesisContext, entr
 		// Codex, TypeSafe, and xAI bundled credentials resolve back to their
 		// parent config entry so the config index, prefix, effective proxy, and
 		// base URL keep that entry's model mapping and request headers.
-		if provider == "codex" || provider == "typesafe" || provider == "xai" {
+		if provider == "codex" || provider == "typesafe" || provider == "xai" || strings.HasPrefix(provider, "decision-") {
 			for _, bundled := range entry.APIKeyEntries {
 				key := strings.TrimSpace(bundled.APIKey)
 				if key == "" {

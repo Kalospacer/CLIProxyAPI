@@ -2,7 +2,7 @@ package auth
 
 import "testing"
 
-func TestDecisionCredentialPolicyUsesNativeAPICredentials(t *testing.T) {
+func TestDecisionCredentialPolicyRequiresDedicatedProvider(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		policy   string
@@ -10,56 +10,45 @@ func TestDecisionCredentialPolicyUsesNativeAPICredentials(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:   "OpenAI API key with versioned base URL",
-			policy: CredentialPolicyOpenAIDecisionsV1,
-			auth: &Auth{Provider: "codex", Attributes: map[string]string{
-				AttributeAPIKey: "test-key", "base_url": "https://api.openai.com/v1",
-			}},
+			name:     "OpenAI decision key in its own group",
+			policy:   CredentialPolicyOpenAIDecisionsV1,
+			auth:     &Auth{Provider: "decision-openai", Attributes: map[string]string{AttributeAPIKey: "key"}},
 			expected: true,
 		},
 		{
-			name:   "OpenAI API key without base URL uses official upstream",
-			policy: CredentialPolicyOpenAIDecisionsV1,
-			auth:   &Auth{Provider: "codex", Attributes: map[string]string{AttributeAPIKey: "test-key"}},
-			expected: true,
-		},
-		{
-			name:   "third-party Codex key is excluded",
+			name:   "ordinary Codex chat key is excluded",
 			policy: CredentialPolicyOpenAIDecisionsV1,
 			auth: &Auth{Provider: "codex", Attributes: map[string]string{
-				AttributeAPIKey: "other-key", "base_url": "https://proxy.muice.moe/snow-bread-soft/api.mistral.ai/v1",
+				AttributeAPIKey: "key", "base_url": "https://api.openai.com/v1",
 			}},
 		},
 		{
-			name:   "OpenAI OAuth is excluded",
+			name:   "Codex OAuth is excluded",
 			policy: CredentialPolicyOpenAIDecisionsV1,
 			auth:   &Auth{Provider: "codex", Metadata: map[string]any{"access_token": "token"}},
 		},
 		{
-			name:   "AI Studio key with versioned base URL",
-			policy: CredentialPolicyGeminiDecisionsV1,
-			auth: &Auth{Provider: "gemini", Attributes: map[string]string{
-				AttributeAPIKey: "test-key", "base_url": "https://generativelanguage.googleapis.com/v1beta",
-			}},
+			name:     "Gemini decision key in its own group",
+			policy:   CredentialPolicyGeminiDecisionsV1,
+			auth:     &Auth{Provider: "decision-gemini", Attributes: map[string]string{AttributeAPIKey: "key"}},
 			expected: true,
 		},
 		{
-			name:   "AI Studio key without base URL uses official upstream",
-			policy: CredentialPolicyGeminiDecisionsV1,
-			auth:   &Auth{Provider: "gemini", Attributes: map[string]string{AttributeAPIKey: "test-key"}},
-			expected: true,
-		},
-		{
-			name:   "Gemini OpenAI-compatible endpoint is excluded",
+			name:   "ordinary Gemini chat key is excluded",
 			policy: CredentialPolicyGeminiDecisionsV1,
 			auth: &Auth{Provider: "gemini", Attributes: map[string]string{
-				AttributeAPIKey: "test-key", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+				AttributeAPIKey: "key", "base_url": "https://generativelanguage.googleapis.com/v1beta",
 			}},
 		},
 		{
 			name:   "Gemini OAuth is excluded",
 			policy: CredentialPolicyGeminiDecisionsV1,
 			auth:   &Auth{Provider: "gemini", Metadata: map[string]any{"access_token": "token"}},
+		},
+		{
+			name:   "OpenAI decision policy rejects the Gemini decision group",
+			policy: CredentialPolicyOpenAIDecisionsV1,
+			auth:   &Auth{Provider: "decision-gemini", Attributes: map[string]string{AttributeAPIKey: "key"}},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

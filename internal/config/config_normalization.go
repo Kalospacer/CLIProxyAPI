@@ -379,6 +379,55 @@ func sanitizeTypeSafeKeyEntries(entries []TypeSafeKey) []TypeSafeKey {
 	return out
 }
 
+// SanitizeDecisionKeys normalizes native decision API key entries, defaulting
+// BaseURL to the official endpoint of each protocol.
+func (cfg *Config) SanitizeDecisionKeys() {
+	if cfg == nil {
+		return
+	}
+	cfg.DecisionOpenAIKey = sanitizeDecisionKeyEntries(cfg.DecisionOpenAIKey, decisionOpenAIDefaultBaseURL)
+	cfg.DecisionGeminiKey = sanitizeDecisionKeyEntries(cfg.DecisionGeminiKey, decisionGeminiDefaultBaseURL)
+}
+
+// decisionOpenAIDefaultBaseURL and decisionGeminiDefaultBaseURL are the official
+// upstream roots used when a decision credential omits base-url.
+const (
+	decisionOpenAIDefaultBaseURL = "https://api.openai.com"
+	decisionGeminiDefaultBaseURL = "https://generativelanguage.googleapis.com"
+)
+
+func sanitizeDecisionKeyEntries(entries []CodexKey, defaultBaseURL string) []CodexKey {
+	if len(entries) == 0 {
+		return entries
+	}
+	out := make([]CodexKey, 0, len(entries))
+	for i := range entries {
+		e := entries[i]
+		e.APIKey = strings.TrimSpace(e.APIKey)
+		hasBundledKey := false
+		for j := range e.APIKeyEntries {
+			e.APIKeyEntries[j].APIKey = strings.TrimSpace(e.APIKeyEntries[j].APIKey)
+			if e.APIKeyEntries[j].APIKey != "" {
+				hasBundledKey = true
+			}
+		}
+		if e.APIKey == "" && !hasBundledKey {
+			continue
+		}
+		e.Prefix = normalizeModelPrefix(e.Prefix)
+		e.BaseURL = strings.TrimSpace(e.BaseURL)
+		if e.BaseURL == "" {
+			e.BaseURL = defaultBaseURL
+		}
+		e.Headers = NormalizeHeaders(e.Headers)
+		e.ExcludedModels = NormalizeExcludedModels(e.ExcludedModels)
+		e.AlphaSearch = false
+		e.Websockets = false
+		out = append(out, e)
+	}
+	return out
+}
+
 func sanitizeMetaKeyEntries(entries []MetaKey) []MetaKey {
 	if len(entries) == 0 {
 		return entries

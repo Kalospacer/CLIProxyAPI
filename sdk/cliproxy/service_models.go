@@ -211,6 +211,23 @@ func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, c
 			}
 		}
 		models = applyExcludedModels(models, excluded)
+	case executor.DecisionOpenAIProvider, executor.DecisionGeminiProvider:
+		// Decision models are not chat models. They get their own catalog entry so
+		// the management panel can list them, but their requests are served by the
+		// native decision handler rather than the chat pipeline.
+		defaultModel := "gpt-6-luna-decision"
+		if strings.EqualFold(provider, executor.DecisionGeminiProvider) {
+			defaultModel = "gemini-decision-1"
+		}
+		if entry := resolveConfigDecisionKey(cfg, a, provider); entry != nil {
+			if len(entry.Models) > 0 {
+				models = buildConfigModels(entry.Models, "openai", "openai", provider)
+			} else {
+				models = buildConfigModels([]config.CodexModel{{Name: defaultModel, Alias: defaultModel}}, "openai", "openai", provider)
+			}
+			excluded = entry.ExcludedModels
+		}
+		models = applyExcludedModels(models, excluded)
 	case "typesafe":
 		// TypeSafe has no static catalog; models come from the config entry,
 		// defaulting to the flagship jev-latest alias so a bare api-key entry
@@ -629,6 +646,19 @@ func (s *Service) resolveConfigTypeSafeKey(auth *coreauth.Auth) *config.TypeSafe
 		return nil
 	}
 	return resolveConfigCodexStyleKey(auth, s.cfg.TypeSafeKey, false)
+}
+
+// resolveConfigDecisionKey resolves the decision credential group that owns auth,
+// selecting the family that matches the protocol's provider.
+func resolveConfigDecisionKey(cfg *config.Config, auth *coreauth.Auth, provider string) *config.CodexKey {
+	if cfg == nil {
+		return nil
+	}
+	entries := cfg.DecisionOpenAIKey
+	if strings.EqualFold(strings.TrimSpace(provider), "decision-gemini") {
+		entries = cfg.DecisionGeminiKey
+	}
+	return resolveConfigCodexStyleKey(auth, entries, false)
 }
 
 func resolveConfigCodexStyleKey(auth *coreauth.Auth, entries []config.CodexKey, validateIndexCredentials bool) *config.CodexKey {

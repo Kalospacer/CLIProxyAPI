@@ -34,7 +34,7 @@ func validateCredentialWeightYAML(data []byte) error {
 	families := map[string]struct{}{
 		"gemini-api-key": {}, "interactions-api-key": {}, "claude-api-key": {},
 		"vertex-api-key": {}, "codex-api-key": {}, "xai-api-key": {}, "meta-api-key": {},
-		"typesafe-api-key": {},
+		"typesafe-api-key": {}, "decision-openai-api-key": {}, "decision-gemini-api-key": {},
 	}
 	for index := 0; root != nil && root.Kind == yaml.MappingNode && index+1 < len(root.Content); index += 2 {
 		name := root.Content[index].Value
@@ -57,7 +57,8 @@ func validateCredentialWeightYAML(data []byte) error {
 
 // bundledFamilies lists the provider families whose key entries may also carry
 // bundled api-key-entries credentials.
-var bundledFamilies = map[string]struct{}{"codex-api-key": {}, "xai-api-key": {}, "typesafe-api-key": {}}
+var bundledFamilies = map[string]struct{}{"codex-api-key": {}, "xai-api-key": {}, "typesafe-api-key": {},
+	"decision-openai-api-key": {}, "decision-gemini-api-key": {}}
 
 func validateWeightSequenceNode(sequence *yaml.Node, path string, allowBundled bool) error {
 	if sequence == nil || sequence.Kind != yaml.SequenceNode {
@@ -175,22 +176,37 @@ func (cfg *Config) ValidateCredentialWeights() error {
 			return fmt.Errorf("meta-api-key[%d].weight: %w", index, errValidate)
 		}
 	}
-	for index := range cfg.TypeSafeKey {
-		if errValidate := ValidateCredentialWeight(cfg.TypeSafeKey[index].Weight); errValidate != nil {
-			return fmt.Errorf("typesafe-api-key[%d].weight: %w", index, errValidate)
-		}
-		for keyIndex := range cfg.TypeSafeKey[index].APIKeyEntries {
-			weight := cfg.TypeSafeKey[index].APIKeyEntries[keyIndex].Weight
-			if errValidate := ValidateCredentialWeight(weight); errValidate != nil {
-				return fmt.Errorf("typesafe-api-key[%d].api-key-entries[%d].weight: %w", index, keyIndex, errValidate)
-			}
-		}
+	if errTypeSafe := validateCodexStyleWeights(cfg.TypeSafeKey, "typesafe-api-key"); errTypeSafe != nil {
+		return errTypeSafe
+	}
+	if errOpenAI := validateCodexStyleWeights(cfg.DecisionOpenAIKey, "decision-openai-api-key"); errOpenAI != nil {
+		return errOpenAI
+	}
+	if errGemini := validateCodexStyleWeights(cfg.DecisionGeminiKey, "decision-gemini-api-key"); errGemini != nil {
+		return errGemini
 	}
 	for providerIndex := range cfg.OpenAICompatibility {
 		for keyIndex := range cfg.OpenAICompatibility[providerIndex].APIKeyEntries {
 			weight := cfg.OpenAICompatibility[providerIndex].APIKeyEntries[keyIndex].Weight
 			if errValidate := ValidateCredentialWeight(weight); errValidate != nil {
 				return fmt.Errorf("openai-compatibility[%d].api-key-entries[%d].weight: %w", providerIndex, keyIndex, errValidate)
+			}
+		}
+	}
+	return nil
+}
+
+// validateCodexStyleWeights validates parent and bundled credential weights for
+// every provider family that reuses the Codex key structure.
+func validateCodexStyleWeights(entries []CodexKey, family string) error {
+	for index := range entries {
+		if errValidate := ValidateCredentialWeight(entries[index].Weight); errValidate != nil {
+			return fmt.Errorf("%s[%d].weight: %w", family, index, errValidate)
+		}
+		for keyIndex := range entries[index].APIKeyEntries {
+			weight := entries[index].APIKeyEntries[keyIndex].Weight
+			if errValidate := ValidateCredentialWeight(weight); errValidate != nil {
+				return fmt.Errorf("%s[%d].api-key-entries[%d].weight: %w", family, index, keyIndex, errValidate)
 			}
 		}
 	}

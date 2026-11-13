@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -39,7 +40,7 @@ type decisionProtocol struct {
 var (
 	openAIDecisionsProtocol = decisionProtocol{
 		name:             "openai decisions",
-		provider:         "codex",
+		provider:         executor.DecisionOpenAIProvider,
 		policy:           auth.CredentialPolicyOpenAIDecisionsV1,
 		defaultBaseURL:   openAIDecisionsDefaultBaseURL,
 		versionedPath:    "/v1/decisions",
@@ -49,7 +50,7 @@ var (
 	}
 	geminiDecisionsProtocol = decisionProtocol{
 		name:             "gemini decisions",
-		provider:         "gemini",
+		provider:         executor.DecisionGeminiProvider,
 		policy:           auth.CredentialPolicyGeminiDecisionsV1,
 		defaultBaseURL:   geminiDecisionsDefaultBaseURL,
 		versionedPath:    "/v1beta/decisions",
@@ -95,10 +96,10 @@ func decisionUpstreamURL(protocol decisionProtocol, current *auth.Auth) string {
 			return baseURL
 		}
 	}
-	if protocol.provider == "gemini" && strings.HasSuffix(baseURL, "/v1beta") {
+	if protocol.provider == executor.DecisionGeminiProvider && strings.HasSuffix(baseURL, "/v1beta") {
 		return baseURL + protocol.unversionedPath
 	}
-	if protocol.provider == "codex" && strings.HasSuffix(baseURL, "/v1") {
+	if protocol.provider == executor.DecisionOpenAIProvider && strings.HasSuffix(baseURL, "/v1") {
 		return baseURL + protocol.unversionedPath
 	}
 	return baseURL + protocol.versionedPath

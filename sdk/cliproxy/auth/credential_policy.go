@@ -1,9 +1,6 @@
 package auth
 
-import (
-	"net/url"
-	"strings"
-)
+import "strings"
 
 const (
 	// CredentialPolicyCodexAlphaSearchV1 selects credentials supported by Codex Alpha Search.
@@ -13,13 +10,21 @@ const (
 	// jev evaluation protocol (/v1/systemone).
 	CredentialPolicyTypeSafeSystemOneV1 = "typesafe_systemone_v1"
 
-	// CredentialPolicyOpenAIDecisionsV1 selects official OpenAI API keys for the
-	// native Decisions API, not Codex OAuth or third-party Responses providers.
+	// CredentialPolicyOpenAIDecisionsV1 selects credentials of the dedicated OpenAI
+	// Decisions provider group. Decision models are not chat models, so ordinary
+	// Codex credentials must never serve them.
 	CredentialPolicyOpenAIDecisionsV1 = "openai_decisions_v1"
 
-	// CredentialPolicyGeminiDecisionsV1 selects AI Studio API keys for the native
-	// Decisions API, not Gemini OAuth or its OpenAI-compatible chat endpoint.
+	// CredentialPolicyGeminiDecisionsV1 selects credentials of the dedicated Gemini
+	// Decisions provider group.
 	CredentialPolicyGeminiDecisionsV1 = "gemini_decisions_v1"
+)
+
+// Decision provider identifiers. These are duplicated from the executor package
+// to keep this portable policy helper free of internal imports.
+const (
+	decisionOpenAIProvider = "decision-openai"
+	decisionGeminiProvider = "decision-gemini"
 )
 
 func normalizeCredentialPolicy(policy string) string {
@@ -56,36 +61,12 @@ func credentialPolicyAllows(policy string, auth *Auth) bool {
 		}
 		return auth.AuthKind() == AuthKindAPIKey
 	case CredentialPolicyOpenAIDecisionsV1:
-		return auth.AuthKind() == AuthKindAPIKey && decisionCredentialHostAllowed(auth, "api.openai.com")
+		// Decision credentials live in their own provider group, so group
+		// membership already excludes ordinary Codex chat credentials.
+		return strings.EqualFold(strings.TrimSpace(auth.Provider), decisionOpenAIProvider) && auth.AuthKind() == AuthKindAPIKey
 	case CredentialPolicyGeminiDecisionsV1:
-		return auth.AuthKind() == AuthKindAPIKey && decisionCredentialHostAllowed(auth, "generativelanguage.googleapis.com")
+		return strings.EqualFold(strings.TrimSpace(auth.Provider), decisionGeminiProvider) && auth.AuthKind() == AuthKindAPIKey
 	default:
 		return false
 	}
-}
-
-// decisionCredentialHostAllowed prevents keys for another Codex/Gemini provider
-// from being sent to a native Decisions upstream. Empty base URLs use the
-// provider's official default and are therefore eligible.
-func decisionCredentialHostAllowed(current *Auth, officialHost string) bool {
-	provider := "codex"
-	version := "/v1"
-	if officialHost == "generativelanguage.googleapis.com" {
-		provider = "gemini"
-		version = "/v1beta"
-	}
-	if current == nil || !strings.EqualFold(strings.TrimSpace(current.Provider), provider) {
-		return false
-	}
-	baseURL := strings.TrimSpace(authAttribute(current, "base_url"))
-	if baseURL == "" {
-		return true
-	}
-	parsed, errParse := url.Parse(baseURL)
-	if errParse != nil || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
-		(parsed.Scheme != "https" && parsed.Scheme != "http") || !strings.EqualFold(parsed.Hostname(), officialHost) {
-		return false
-	}
-	path := strings.TrimRight(parsed.EscapedPath(), "/")
-	return path == "" || path == version || path == version+"/decisions"
 }

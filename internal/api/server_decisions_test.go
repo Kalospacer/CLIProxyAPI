@@ -52,20 +52,16 @@ func TestDecisionRoutesPreserveNativePayloadAndRotateAPIKeys(t *testing.T) {
 		provider     string
 		model        string
 	}{
-		{name: "OpenAI", route: "/v1/decisions", upstreamPath: "/v1/decisions", provider: "codex", model: "gpt-6-luna"},
-		{name: "OpenAI direct alias", route: "/openai/v1/decisions", upstreamPath: "/v1/decisions", provider: "codex", model: "gpt-6-luna"},
-		{name: "Gemini", route: "/v1beta/decisions", upstreamPath: "/v1beta/decisions", provider: "gemini", model: "gemini-decision-1"},
+		{name: "OpenAI", route: "/v1/decisions", upstreamPath: "/v1/decisions", provider: "decision-openai", model: "gpt-6-luna-decision"},
+		{name: "OpenAI direct alias", route: "/openai/v1/decisions", upstreamPath: "/v1/decisions", provider: "decision-openai", model: "gpt-6-luna-decision"},
+		{name: "Gemini", route: "/v1beta/decisions", upstreamPath: "/v1beta/decisions", provider: "decision-gemini", model: "gemini-decision-1"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			server := newTestServer(t)
 			rt := &decisionTestRoundTripper{}
 			manager := server.handlers.AuthManager
 			var providerExecutor auth.ProviderExecutor
-			if test.provider == "gemini" {
-				providerExecutor = executor.NewGeminiExecutor(server.cfg)
-			} else {
-				providerExecutor = executor.NewOpenAICompatExecutor("codex", server.cfg)
-			}
+			providerExecutor = executor.NewDecisionExecutor(server.cfg, test.provider)
 			manager.RegisterExecutor(providerExecutor)
 			for _, suffix := range []string{"expired", "working"} {
 				if _, errRegister := manager.Register(context.Background(), &auth.Auth{
@@ -97,7 +93,7 @@ func TestDecisionRoutesPreserveNativePayloadAndRotateAPIKeys(t *testing.T) {
 					t.Errorf("request body changed: got %s, want %s", rt.bodies[index], payload)
 				}
 			}
-			if test.provider == "gemini" {
+			if test.provider == "decision-gemini" {
 				if got := rt.requests[0].Header.Get("x-goog-api-key"); got != "decision-test-expired" {
 					t.Errorf("Gemini auth = %q, want first key", got)
 				}

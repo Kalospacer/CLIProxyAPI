@@ -172,6 +172,16 @@ type Config struct {
 	// using the same structure as Codex API keys.
 	TypeSafeKey []TypeSafeKey `yaml:"typesafe-api-key" json:"typesafe-api-key"`
 
+	// DecisionOpenAIKey defines OpenAI Decisions API key configurations using the
+	// same structure as Codex API keys. These credentials serve only the native
+	// /v1/decisions endpoint.
+	DecisionOpenAIKey []DecisionOpenAIKey `yaml:"decision-openai-api-key" json:"decision-openai-api-key"`
+
+	// DecisionGeminiKey defines Gemini Decisions API key configurations using the
+	// same structure as Codex API keys. These credentials serve only the native
+	// /v1beta/decisions endpoint.
+	DecisionGeminiKey []DecisionGeminiKey `yaml:"decision-gemini-api-key" json:"decision-gemini-api-key"`
+
 	// XAI configures provider-wide xAI request behavior.
 	XAI XAIConfig `yaml:"xai" json:"xai"`
 

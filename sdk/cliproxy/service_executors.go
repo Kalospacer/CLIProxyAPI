@@ -223,6 +223,8 @@ func baselineExecutorAuths() []*coreauth.Auth {
 		"devin",
 		"meta",
 		"openai-compatibility",
+		executor.DecisionOpenAIProvider,
+		executor.DecisionGeminiProvider,
 	}
 	auths := make([]*coreauth.Auth, 0, len(providers))
 	for _, provider := range providers {
@@ -335,6 +337,8 @@ func (s *Service) registerExecutorForAuth(a *coreauth.Auth, forceReplace bool) {
 		s.coreManager.RegisterExecutor(executor.NewMetaExecutor(cfg))
 	case "typesafe":
 		s.coreManager.RegisterExecutor(executor.NewTypeSafeExecutor(cfg))
+	case executor.DecisionOpenAIProvider, executor.DecisionGeminiProvider:
+		s.coreManager.RegisterExecutor(executor.NewDecisionExecutor(cfg, a.Provider))
 	default:
 		providerKey := strings.ToLower(strings.TrimSpace(a.Provider))
 		if providerKey == "" {

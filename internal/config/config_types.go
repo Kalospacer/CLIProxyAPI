@@ -987,6 +987,12 @@ type TypeSafeKey = CodexKey
 // TypeSafeModel uses the Codex model mapping structure for TypeSafe AI models.
 type TypeSafeModel = CodexModel
 
+// DecisionOpenAIKey uses the Codex API key structure for the OpenAI Decisions API.
+type DecisionOpenAIKey = CodexKey
+
+// DecisionGeminiKey uses the Codex API key structure for the Gemini Decisions API.
+type DecisionGeminiKey = CodexKey
+
 // GeminiKey represents the configuration for a Gemini API key,
 // including optional overrides for upstream base URL, proxy routing, and headers.
 type GeminiKey struct {
