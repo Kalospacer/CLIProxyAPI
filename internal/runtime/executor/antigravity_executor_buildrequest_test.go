@@ -10,6 +10,7 @@ import (
 
 	"github.com/MoeForge/moego/json"
 	"github.com/MoeForge/moego/ojson"
+	"github.com/google/uuid"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
@@ -173,13 +174,13 @@ func TestAntigravityBuildRequest_UsesRouteModelWhenPayloadContainsDifferentModel
 	}
 }
 
-func TestAntigravityBuildRequestUsesDerivedSessionIDAndPreservesExplicit(t *testing.T) {
+func TestAntigravityBuildRequestUsesNativeCCPASession(t *testing.T) {
 	t.Parallel()
 
 	executor := &AntigravityExecutor{}
 	auth := &cliproxyauth.Auth{Metadata: map[string]any{"project_id": "project-1"}}
 	payload := []byte(`{"request":{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}}`)
-	req, err := executor.buildRequest(context.Background(), auth, "token", "gemini-3.1-pro", payload, false, "", "https://example.com", "-123456789")
+	req, err := executor.buildRequest(context.Background(), auth, "token", "gemini-3.1-pro", payload, false, "", "https://example.com")
 	if err != nil {
 		t.Fatalf("buildRequest error: %v", err)
 	}
@@ -188,12 +189,12 @@ func TestAntigravityBuildRequestUsesDerivedSessionIDAndPreservesExplicit(t *test
 	if !ok {
 		t.Fatalf("request missing or invalid: %v", body["request"])
 	}
-	if got := request["sessionId"]; got != "-123456789" {
-		t.Fatalf("request.sessionId = %v, want -123456789", got)
+	if got := request["sessionId"]; got != "-3750763034362895579" {
+		t.Fatalf("request.sessionId = %v, want native CCPA session", got)
 	}
 
 	explicitPayload := []byte(`{"request":{"sessionId":"-987654321","contents":[{"role":"user","parts":[{"text":"hello"}]}]}}`)
-	explicitReq, errExplicit := executor.buildRequest(context.Background(), auth, "token", "gemini-3.1-pro", explicitPayload, false, "", "https://example.com", "-123456789")
+	explicitReq, errExplicit := executor.buildRequest(context.Background(), auth, "token", "gemini-3.1-pro", explicitPayload, false, "", "https://example.com")
 	if errExplicit != nil {
 		t.Fatalf("buildRequest explicit error: %v", errExplicit)
 	}
@@ -202,8 +203,8 @@ func TestAntigravityBuildRequestUsesDerivedSessionIDAndPreservesExplicit(t *test
 	if !ok {
 		t.Fatalf("explicit request missing or invalid: %v", explicitBody["request"])
 	}
-	if got := explicitRequest["sessionId"]; got != "-987654321" {
-		t.Fatalf("explicit request.sessionId = %v, want -987654321", got)
+	if got := explicitRequest["sessionId"]; got != "-3750763034362895579" {
+		t.Fatalf("explicit request.sessionId = %v, want native CCPA session", got)
 	}
 }
 
@@ -624,5 +625,56 @@ func assertSchemaSanitizedAndPropertyPreserved(t *testing.T, params map[string]a
 	}
 	if _, ok := mode["deprecated"]; ok {
 		t.Fatalf("deprecated should be removed from nested schema")
+	}
+}
+
+func TestAntigravityRewriteRunsBeforePayloadOverride(t *testing.T) {
+	cfg := &config.Config{
+		Antigravity: config.AntigravityConfig{SensitiveWordsReplace: map[string]string{"DeepSeek Harness": "agent framework"}},
+		Payload:     config.PayloadConfig{Override: []config.PayloadRule{{Models: []config.PayloadModelRule{{Name: "gemini-*"}}, Params: map[string]any{"contents.0.parts.0.text": "DeepSeek Harness injected by payload rule"}}}},
+	}
+	payload := []byte(`{"request":{"systemInstruction":{"parts":[{"text":"DeepSeek Harness system"}]},"contents":[{"role":"user","parts":[{"text":"first"}]},{"role":"model","parts":[{"functionCall":{"name":"read","args":{"path":"a"}}}]},{"role":"user","parts":[{"functionResponse":{"name":"read","response":{"result":"DeepSeek Harness result"}}}]}],"tools":[{"functionDeclarations":[{"name":"read","description":"DeepSeek Harness description","parameters":{"type":"object","properties":{"file.path":{"type":"string","description":"DeepSeek Harness argument"}}}}]}]}}`)
+	wire := captureAntigravityWireBody(t, cfg, "gemini-3.1-pro-preview", payload)
+	for path, want := range map[string]string{
+		"request.systemInstruction.parts.0.text":                                              "agent framework system",
+		"request.contents.0.parts.0.text":                                                     "DeepSeek Harness injected by payload rule",
+		"request.contents.2.parts.0.functionResponse.response.result":                         "DeepSeek Harness result",
+		"request.tools.0.functionDeclarations.0.description":                                  "DeepSeek Harness description",
+		`request.tools.0.functionDeclarations.0.parameters.properties.file\.path.description`: "DeepSeek Harness argument",
+	} {
+		if got := ojson.GetBytes(wire, path).String(); got != want {
+			t.Errorf("%s = %q, want %q", path, got, want)
+		}
+	}
+}
+func TestAntigravityRequestIDUsesNativeFallbackFormat(t *testing.T) {
+	cases := []struct{ name, payload, requestType string }{
+		{"default", `{"request":{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}}`, "agent"},
+		{"explicit", `{"requestType":"chat","request":{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}}`, "chat"},
+	}
+	executor := NewAntigravityExecutor(&config.Config{})
+	auth := &cliproxyauth.Auth{Metadata: map[string]any{"project_id": "project-test"}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			request, errBuild := executor.buildRequest(context.Background(), auth, "token", "gemini-4-carbon-high", []byte(tc.payload), false, "", "https://example.invalid")
+			if errBuild != nil {
+				t.Fatal(errBuild)
+			}
+			wire, errRead := io.ReadAll(request.Body)
+			if errRead != nil {
+				t.Fatal(errRead)
+			}
+			if errClose := request.Body.Close(); errClose != nil {
+				t.Fatal(errClose)
+			}
+			id := ojson.GetBytes(wire, "requestId").String()
+			prefix, rest, found := strings.Cut(id, "/")
+			if !found || prefix != tc.requestType {
+				t.Fatalf("requestId = %q, want %s/UUID", id, tc.requestType)
+			}
+			if _, errUUID := uuid.Parse(rest); errUUID != nil {
+				t.Fatalf("requestId UUID = %q: %v", rest, errUUID)
+			}
+		})
 	}
 }

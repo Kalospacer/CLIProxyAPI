@@ -419,7 +419,7 @@ func TestAntigravitySensitivePatternsReplaceFromYAML(t *testing.T) {
 	}
 }
 
-func TestAntigravitySensitiveWordsReplaceOnlyPreservesToolsAndCountTokens(t *testing.T) {
+func TestAntigravitySensitiveWordsReplaceCoversUserAndCountTokens(t *testing.T) {
 	captured := make(chan []byte, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, errRead := io.ReadAll(r.Body)
@@ -480,8 +480,8 @@ func TestAntigravitySensitiveWordsReplaceOnlyPreservesToolsAndCountTokens(t *tes
 	if gotToolDesc := ojson.GetBytes(execBody, "request.tools.0.functionDeclarations.0.description").String(); gotToolDesc != "Codex diagnostic tool" {
 		t.Fatalf("tool description = %q, want unchanged", gotToolDesc)
 	}
-	if gotUser := ojson.GetBytes(execBody, "request.contents.0.parts.0.text").String(); gotUser != "You are Codex, an agent based on GPT-5." {
-		t.Fatalf("user content = %q, want unchanged", gotUser)
+	if gotUser := ojson.GetBytes(execBody, "request.contents.0.parts.0.text").String(); gotUser != "You are a helpful coding assistant." {
+		t.Fatalf("user content = %q, want replacement", gotUser)
 	}
 
 	if _, errCount := executor.CountTokens(context.Background(), auth, req, opts); errCount != nil {
@@ -490,6 +490,9 @@ func TestAntigravitySensitiveWordsReplaceOnlyPreservesToolsAndCountTokens(t *tes
 	countBody := <-captured
 	if got := ojson.GetBytes(countBody, "request.systemInstruction.parts.0.text").String(); got != wantInstruction {
 		t.Fatalf("CountTokens systemInstruction = %q, want %q", got, wantInstruction)
+	}
+	if got := ojson.GetBytes(countBody, "request.contents.0.parts.0.text").String(); got != "You are a helpful coding assistant." {
+		t.Fatalf("CountTokens user content = %q, want replacement", got)
 	}
 }
 

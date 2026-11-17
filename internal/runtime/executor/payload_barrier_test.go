@@ -106,7 +106,7 @@ func TestPayloadBarrierAntigravityRebuiltAttempts(t *testing.T) {
 	executor := NewAntigravityExecutor(cfg)
 	auth := &cliproxyauth.Auth{Metadata: map[string]any{"project_id": "project-test"}}
 	for attempt := 0; attempt < 2; attempt++ {
-		request, errBuild := executor.buildRequest(ctx, auth, "token", req.Model, body, attempt == 1, "", "https://example.invalid", "injected-session")
+		request, errBuild := executor.buildRequest(ctx, auth, "token", req.Model, body, attempt == 1, "", "https://example.invalid")
 		if errBuild != nil {
 			t.Fatal(errBuild)
 		}

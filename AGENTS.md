@@ -25,8 +25,12 @@ Go 1.26+ proxy server providing OpenAI/Gemini/Claude/Codex compatible APIs with 
 - `cmd/server` 已移除 `-port` 启动参数，监听端口只由配置文件 `port` 决定。创建 8319 测试实例时，需复制配置文件并把 `port`、`oauth.auth-dir`、`plugins.dir`、`plugins.configs.*.state_file` 改到独立路径，再以 `--config` 启动。
 
 ## 本次上游同步状态
+- 本工作区正在对照 Antigravity 2.32.1 CCPA：出站普通文本请求使用空串 FNV-1a 的有符号值，无 trajectory 时的 requestId 使用 `requestType/UUID`；内部推理回放仍按原有会话派生隔离。429、重试及 Worker 不在本次修改范围。
+- 按当前任务要求，Antigravity 的敏感内容规则仅处理最终请求中的系统指令和普通对话文本；工具名称、声明、参数、调用和结果不由该规则改写。更多客户端样本及原版传输仍在调查，当前工作区未部署。
+- `internal/runtime/executor/testdata/antigravity_harness_rules.yaml` 保存候选改写规则；普通文本样本覆盖 DSH 身份、上下文和规则包装、Claude 部分风格与本机 Codex 5 份完整模板。OpenCode 覆盖已按交付范围移除，生产配置未更新。
+- 改写顺序是硬约束：敏感内容替换必须早于结构化输出 schema 注入与 payload override。放到最终出口会连带改写内联 JSON schema 和用户覆盖文本，破坏结构化输出与 override 语义。
 - 独立工作区已将 PR #11 的上游 `7df56074` 合并到基线 `fe1e08b4`，解决了 `sdk/cliproxy/service_executors.go` 中的执行器注册冲突；该合并尚未提交或推送。
-- 原帖规则及 DSH、OpenCode 身份替换为部署配置，不属于仓库默认配置；替换仅作用于 Antigravity 系统指令，无法识别系统指令内文本的来源。
+- 生产环境中的原帖规则及 DSH、OpenCode 身份替换属于部署配置；线上当前实现仅作用于 Antigravity 系统指令，独立工作区的普通对话文本扩展尚未部署。
 - Go 1.26.10、CGO 构建及相关测试已通过；4 个生产插件文件在无外网的隔离实例中完成加载和注册，业务功能仍需单独验证。
 - 2026-11-18：该未提交合并构建已部署至 `/opt/cliproxy/cli-proxy-api`；生产配置启用了 14 条正则和 1 条词替换。健康检查与模型列表正常；无 Antigravity OAuth 凭证的真实上游请求验证。
 

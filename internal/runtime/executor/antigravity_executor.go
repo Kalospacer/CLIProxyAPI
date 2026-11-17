@@ -105,17 +105,6 @@ func (e *AntigravityExecutor) obfuscateSensitiveWords(payload []byte) []byte {
 	return helps.ObfuscateSensitiveWordsInSystemInstruction(payload, matcher)
 }
 
-func (e *AntigravityExecutor) obfuscateSensitiveWordsDoc(doc *ojson.Doc) bool {
-	if doc == nil {
-		return false
-	}
-	matcher := e.getSensitiveWordMatcher()
-	if matcher == nil {
-		return false
-	}
-	return helps.ObfuscateSensitiveWordsInSystemInstructionDoc(doc, matcher)
-}
-
 // Each Antigravity credential gets its own HTTP/1.1 connection pool. Sessions routed
 // to the same auth reuse that pool, while different OAuth identities never share a
 // TCP/TLS connection, matching the native client's one-credential process model.

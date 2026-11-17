@@ -3,7 +3,6 @@ package helps
 import (
 	"testing"
 
-	"github.com/MoeForge/moego/regexp"
 	"github.com/google/uuid"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
@@ -27,13 +26,6 @@ func TestDerivedSessionProviderMappings(t *testing.T) {
 		t.Fatalf("Codex mapping is not stable: first=%q repeated=%q", codexID, repeated)
 	}
 
-	antigravityID := DerivedAntigravitySessionID(metadata)
-	if matched := regexp.MustCompile(`^-[0-9]+$`).MatchString(antigravityID); !matched {
-		t.Fatalf("Antigravity mapping = %q, want negative decimal", antigravityID)
-	}
-	if repeated := DerivedAntigravitySessionID(metadata); repeated != antigravityID {
-		t.Fatalf("Antigravity mapping is not stable: first=%q repeated=%q", antigravityID, repeated)
-	}
 }
 
 func TestProviderSessionUUIDPrefersExecutionSession(t *testing.T) {
@@ -62,8 +54,5 @@ func TestDerivedSessionProviderMappingsRequireIdentity(t *testing.T) {
 
 	if got := DerivedSessionUUID("codex", nil); got != "" {
 		t.Fatalf("DerivedSessionUUID() = %q, want empty", got)
-	}
-	if got := DerivedAntigravitySessionID(nil); got != "" {
-		t.Fatalf("DerivedAntigravitySessionID() = %q, want empty", got)
 	}
 }

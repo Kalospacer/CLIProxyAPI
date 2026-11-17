@@ -101,7 +101,9 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 
 	finalize := helps.NewPayloadFinalizer(e.cfg, e.Identifier(), baseModel, "antigravity", "request", originalTranslated, req, opts)
 	ctx = helps.WithPayloadFinalizer(ctx, finalize)
-	e.obfuscateSensitiveWordsDoc(doc)
+	if errRewrite := helps.ObfuscateSensitiveAntigravityPayloadDoc(doc, e.getSensitiveWordMatcher()); errRewrite != nil {
+		return nil, cliproxyauth.NewRequestScopedError(errRewrite.Error(), http.StatusBadRequest)
+	}
 	sanitizeAntigravityGeminiRequestSignaturesDoc(baseModel, doc)
 	_ = doc.Delete("request.stream")
 
@@ -132,7 +134,7 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 	if replayScope.valid() {
 		replayRequestPayload, _ = antigravityReplayRequestEnvelopeFromDoc(doc)
 	}
-	httpReq, requestPayload, errReq := e.buildRequestDoc(ctx, auth, token, baseModel, doc, true, opts.Alt, baseURL, helps.DerivedAntigravitySessionID(opts.Metadata, req.Metadata))
+	httpReq, requestPayload, errReq := e.buildRequestDoc(ctx, auth, token, baseModel, doc, true, opts.Alt, baseURL)
 	if errReq != nil {
 		err = errReq
 		return nil, err

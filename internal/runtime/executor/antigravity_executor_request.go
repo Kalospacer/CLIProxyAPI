@@ -23,13 +23,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (e *AntigravityExecutor) buildRequest(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, payload []byte, stream bool, alt, baseURL string, derivedSessionIDs ...string) (*http.Request, error) {
+const antigravityCCPASessionID = "-3750763034362895579"
+
+func (e *AntigravityExecutor) buildRequest(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, payload []byte, stream bool, alt, baseURL string) (*http.Request, error) {
 	doc := ojson.NewDoc(payload)
-	httpReq, _, err := e.buildRequestDoc(ctx, auth, token, modelName, doc, stream, alt, baseURL, derivedSessionIDs...)
+	httpReq, _, err := e.buildRequestDoc(ctx, auth, token, modelName, doc, stream, alt, baseURL)
 	return httpReq, err
 }
 
-func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, doc *ojson.Doc, stream bool, alt, baseURL string, derivedSessionIDs ...string) (*http.Request, []byte, error) {
+func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, doc *ojson.Doc, stream bool, alt, baseURL string) (*http.Request, []byte, error) {
 	if token == "" {
 		return nil, nil, statusErr{code: http.StatusUnauthorized, msg: "missing access token"}
 	}
@@ -64,7 +66,7 @@ func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliprox
 	if errProject != nil {
 		return nil, nil, errProject
 	}
-	geminiToAntigravityDoc(doc, modelName, projectID, derivedSessionIDs...)
+	geminiToAntigravityDoc(doc, modelName, projectID)
 	promptStructuredOutput := helps.PrepareAntigravityClaudeStructuredOutputDoc(modelName, doc)
 
 	// Cap maxOutputTokens to model's max_completion_tokens from registry
@@ -715,13 +717,13 @@ func resolveCustomAntigravityBaseURL(auth *cliproxyauth.Auth) string {
 	return ""
 }
 
-func geminiToAntigravity(modelName string, payload []byte, projectID string, derivedSessionIDs ...string) []byte {
+func geminiToAntigravity(modelName string, payload []byte, projectID string) []byte {
 	doc := ojson.NewDoc(payload)
-	geminiToAntigravityDoc(doc, modelName, projectID, derivedSessionIDs...)
+	geminiToAntigravityDoc(doc, modelName, projectID)
 	return doc.Bytes()
 }
 
-func geminiToAntigravityDoc(doc *ojson.Doc, modelName string, projectID string, derivedSessionIDs ...string) {
+func geminiToAntigravityDoc(doc *ojson.Doc, modelName string, projectID string) {
 	if doc == nil {
 		return
 	}
@@ -748,15 +750,8 @@ func geminiToAntigravityDoc(doc *ojson.Doc, modelName string, projectID string, 
 	if isImageModel {
 		_ = doc.Set("requestId", generateImageGenRequestID())
 	} else if reqType != "web_search" {
-		_ = doc.Set("requestId", generateRequestID())
-		sessionID := strings.TrimSpace(doc.Get("request.sessionId").String())
-		if sessionID == "" && len(derivedSessionIDs) > 0 {
-			sessionID = strings.TrimSpace(derivedSessionIDs[0])
-		}
-		if sessionID == "" {
-			sessionID = generateStableSessionIDDoc(doc)
-		}
-		_ = doc.Set("request.sessionId", sessionID)
+		_ = doc.Set("requestId", generateRequestID(reqType))
+		_ = doc.Set("request.sessionId", antigravityCCPASessionID)
 	}
 
 	_ = doc.Delete("request.safetySettings")
@@ -766,8 +761,11 @@ func geminiToAntigravityDoc(doc *ojson.Doc, modelName string, projectID string, 
 	}
 }
 
-func generateRequestID() string {
-	return "agent-" + uuid.NewString()
+func generateRequestID(requestType string) string {
+	if requestType == "" {
+		requestType = "unknown"
+	}
+	return requestType + "/" + uuid.NewString()
 }
 
 func generateImageGenRequestID() string {
