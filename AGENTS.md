@@ -29,6 +29,9 @@ Go 1.26+ proxy server providing OpenAI/Gemini/Claude/Codex compatible APIs with 
 - 按当前任务要求，Antigravity 的敏感内容规则仅处理最终请求中的系统指令和普通对话文本；工具名称、声明、参数、调用和结果不由该规则改写。更多客户端样本及原版传输仍在调查，当前工作区未部署。
 - `internal/runtime/executor/testdata/antigravity_harness_rules.yaml` 保存改写规则，共 55 条正则；覆盖 DSH 身份与上下文、Claude Code 身份句与风格段、本机 Codex 5 份完整模板。只替换特征句，客户端自带提示词中的工具纪律、上下文管理与任务收尾段落保持原样，避免整块替换连带丢掉工具行为指引。OpenCode 覆盖已按交付范围移除，生产配置未更新。
 - 改写顺序是硬约束：敏感内容替换必须早于结构化输出 schema 注入与 payload override。放到最终出口会连带改写内联 JSON schema 和用户覆盖文本，破坏结构化输出与 override 语义。
+- requestId 采用原生五段形态 `requestType/conversationId/时间戳/trajectoryId/stepIndex`，会话标识取 CPA 会话派生 UUID；无会话时退化为 `requestType/UUID`。trajectoryId 由会话标识派生，与原生按轨迹推进的语义仍有差距。
+- UA 回退版本对齐到本机 2.32.1，changelist 取该构建的 1021296516。TLS 侧沿用上游既有实现：强制 HTTP/1.1 并清空 ALPN，与原生 Go 客户端一致，已有测试锁定。
+- 敏感词匹配会先剔除零宽字符再匹配，命中区间映射回原文；字面替换路径同样先归一化，覆盖被零宽字符打断的特征句。
 - 独立工作区已将 PR #11 的上游 `7df56074` 合并到基线 `fe1e08b4`，解决了 `sdk/cliproxy/service_executors.go` 中的执行器注册冲突，并把结果快进合并到 `main`（`0c091453`），PR #11 状态为已合并。
 - 生产环境中的原帖规则及 DSH、OpenCode 身份替换属于部署配置；线上当前实现仅作用于 Antigravity 系统指令，独立工作区的普通对话文本扩展尚未部署。
 - Go 1.26.10、CGO 构建及相关测试已通过；4 个生产插件文件在无外网的隔离实例中完成加载和注册，业务功能仍需单独验证。

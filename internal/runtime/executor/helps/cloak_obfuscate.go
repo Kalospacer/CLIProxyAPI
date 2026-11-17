@@ -399,6 +399,62 @@ func obfuscateAntigravityPhrase(phrase string) string {
 	return string(r) + combiningGraphemeJoiner + phrase[size:]
 }
 
+// zeroWidthRunes 是会让字面匹配断开的零宽字符。
+var zeroWidthRunes = map[rune]bool{
+	0x200B: true, 0x200C: true, 0x200D: true, 0x034F: true, 0xFEFF: true, 0x2060: true,
+}
+
+// squashZeroWidth 去掉零宽字符，并给出压缩文本到原文的偏移映射。
+func squashZeroWidth(text string) (string, []int) {
+	var b strings.Builder
+	b.Grow(len(text))
+	offsets := make([]int, 0, len(text)+1)
+	for i, r := range text {
+		if zeroWidthRunes[r] {
+			continue
+		}
+		offsets = append(offsets, i)
+		b.WriteRune(r)
+	}
+	offsets = append(offsets, len(text))
+	return b.String(), offsets
+}
+
+// hasZeroWidthRunes 判断文本是否夹带零宽字符。
+func hasZeroWidthRunes(text string) bool {
+	for _, r := range text {
+		if zeroWidthRunes[r] {
+			return true
+		}
+	}
+	return false
+}
+
+// findSpansIgnoringZeroWidth 在去掉零宽字符的文本上匹配，并把区间映射回原文。
+func findSpansIgnoringZeroWidth(re *regexp.Regexp, text string) [][]int {
+	if !hasZeroWidthRunes(text) {
+		return nil
+	}
+	squashed, offsets := squashZeroWidth(text)
+	matches := re.FindAllStringSubmatchIndex(squashed, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	mapped := make([][]int, 0, len(matches))
+	for _, match := range matches {
+		converted := make([]int, len(match))
+		for i, idx := range match {
+			if idx < 0 {
+				converted[i] = idx
+				continue
+			}
+			converted[i] = offsets[idx]
+		}
+		mapped = append(mapped, converted)
+	}
+	return mapped
+}
+
 func (m *SensitiveWordMatcher) collectPatternSpans(text string) []patternMatchSpan {
 	if m == nil || len(m.patternRules) == 0 || text == "" {
 		return nil
@@ -419,6 +475,9 @@ func (m *SensitiveWordMatcher) collectPatternSpans(text string) []patternMatchSp
 			continue
 		}
 		matches := rule.regex.FindAllStringSubmatchIndex(text, -1)
+		if len(matches) == 0 {
+			matches = findSpansIgnoringZeroWidth(rule.regex, text)
+		}
 		if len(matches) == 0 {
 			continue
 		}
@@ -537,6 +596,9 @@ func (m *SensitiveWordMatcher) collectPatternSpans(text string) []patternMatchSp
 func (m *SensitiveWordMatcher) obfuscateLiterals(text string) string {
 	if m == nil || m.regex == nil || text == "" {
 		return text
+	}
+	if hasZeroWidthRunes(text) {
+		text, _ = squashZeroWidth(text)
 	}
 	if m.replaceFn != nil {
 		return m.regex.ReplaceAllStringFunc(text, m.replaceFn)

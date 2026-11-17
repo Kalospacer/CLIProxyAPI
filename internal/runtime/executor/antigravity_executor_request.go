@@ -26,13 +26,13 @@ import (
 // antigravityCCPASessionID 是原生 CCPA 出站请求的会话标识，取空字符串的 FNV-1a 64 位有符号值。
 const antigravityCCPASessionID = "-3750763034362895579"
 
-func (e *AntigravityExecutor) buildRequest(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, payload []byte, stream bool, alt, baseURL string) (*http.Request, error) {
+func (e *AntigravityExecutor) buildRequest(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, payload []byte, stream bool, alt, baseURL string, conversationIDs ...string) (*http.Request, error) {
 	doc := ojson.NewDoc(payload)
-	httpReq, _, err := e.buildRequestDoc(ctx, auth, token, modelName, doc, stream, alt, baseURL)
+	httpReq, _, err := e.buildRequestDoc(ctx, auth, token, modelName, doc, stream, alt, baseURL, conversationIDs...)
 	return httpReq, err
 }
 
-func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, doc *ojson.Doc, stream bool, alt, baseURL string) (*http.Request, []byte, error) {
+func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, doc *ojson.Doc, stream bool, alt, baseURL string, conversationIDs ...string) (*http.Request, []byte, error) {
 	if token == "" {
 		return nil, nil, statusErr{code: http.StatusUnauthorized, msg: "missing access token"}
 	}
@@ -67,7 +67,7 @@ func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliprox
 	if errProject != nil {
 		return nil, nil, errProject
 	}
-	geminiToAntigravityDoc(doc, modelName, projectID)
+	geminiToAntigravityDoc(doc, modelName, projectID, conversationIDs...)
 	promptStructuredOutput := helps.PrepareAntigravityClaudeStructuredOutputDoc(modelName, doc)
 
 	// Cap maxOutputTokens to model's max_completion_tokens from registry
@@ -718,13 +718,13 @@ func resolveCustomAntigravityBaseURL(auth *cliproxyauth.Auth) string {
 	return ""
 }
 
-func geminiToAntigravity(modelName string, payload []byte, projectID string) []byte {
+func geminiToAntigravity(modelName string, payload []byte, projectID string, conversationIDs ...string) []byte {
 	doc := ojson.NewDoc(payload)
-	geminiToAntigravityDoc(doc, modelName, projectID)
+	geminiToAntigravityDoc(doc, modelName, projectID, conversationIDs...)
 	return doc.Bytes()
 }
 
-func geminiToAntigravityDoc(doc *ojson.Doc, modelName string, projectID string) {
+func geminiToAntigravityDoc(doc *ojson.Doc, modelName string, projectID string, conversationIDs ...string) {
 	if doc == nil {
 		return
 	}
@@ -751,7 +751,11 @@ func geminiToAntigravityDoc(doc *ojson.Doc, modelName string, projectID string) 
 	if isImageModel {
 		_ = doc.Set("requestId", generateImageGenRequestID())
 	} else if reqType != "web_search" {
-		_ = doc.Set("requestId", generateRequestID(reqType))
+		conversationID := ""
+		if len(conversationIDs) > 0 {
+			conversationID = strings.TrimSpace(conversationIDs[0])
+		}
+		_ = doc.Set("requestId", generateRequestID(reqType, conversationID))
 		_ = doc.Set("request.sessionId", antigravityCCPASessionID)
 	}
 
@@ -762,11 +766,17 @@ func geminiToAntigravityDoc(doc *ojson.Doc, modelName string, projectID string) 
 	}
 }
 
-func generateRequestID(requestType string) string {
+// generateRequestID 按原生格式拼装 requestId：有会话时使用
+// requestType/conversationId/时间戳/trajectoryId/stepIndex，无会话时退化为 requestType/UUID。
+func generateRequestID(requestType string, conversationID string) string {
 	if requestType == "" {
 		requestType = "unknown"
 	}
-	return requestType + "/" + uuid.NewString()
+	if conversationID == "" {
+		return requestType + "/" + uuid.NewString()
+	}
+	trajectoryID := uuid.NewSHA1(uuid.NameSpaceOID, []byte("cli-proxy-api:antigravity:trajectory\x00"+conversationID)).String()
+	return fmt.Sprintf("%s/%s/%d/%s/%d", requestType, conversationID, time.Now().UnixMilli(), trajectoryID, 0)
 }
 
 func generateImageGenRequestID() string {

@@ -164,3 +164,28 @@ func TestAntigravityRewritesClaudeCodeIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestAntigravityHarnessRulesMatchAcrossZeroWidth(t *testing.T) {
+	raw, errRead := os.ReadFile("testdata/antigravity_harness_rules.yaml")
+	if errRead != nil {
+		t.Fatal(errRead)
+	}
+	cfg, errParse := config.ParseConfigBytes(raw)
+	if errParse != nil {
+		t.Fatal(errParse)
+	}
+	matcher := NewAntigravityExecutor(cfg).getSensitiveWordMatcher()
+	if matcher == nil {
+		t.Fatal("missing harness matcher")
+	}
+	cases := []struct{ name, input, want string }{
+		{"cgj-in-identity", "You are Claude Code, Anthro\u034Fpic's official CLI for Claude.", "You are an interactive CLI coding agent."},
+		{"zwsp-in-identity", "You are \u200BClaude Code, Anthropic's official CLI for Claude.", "You are an interactive CLI coding agent."},
+		{"cgj-in-harness-word", "DeepSeek\u034F Harness framework context", "agent runtime framework context"},
+	}
+	for _, tc := range cases {
+		if got := matcher.ObfuscateText(tc.input); got != tc.want {
+			t.Errorf("%s = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

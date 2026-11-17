@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -676,5 +677,36 @@ func TestAntigravityRequestIDUsesNativeFallbackFormat(t *testing.T) {
 				t.Fatalf("requestId UUID = %q: %v", rest, errUUID)
 			}
 		})
+	}
+}
+
+func TestAntigravityRequestIDUsesNativeConversationShape(t *testing.T) {
+	executor := NewAntigravityExecutor(&config.Config{})
+	auth := &cliproxyauth.Auth{Metadata: map[string]any{"project_id": "project-test"}}
+	payload := []byte(`{"request":{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}}`)
+	conversationID := "11111111-2222-3333-4444-555555555555"
+	request, errBuild := executor.buildRequest(context.Background(), auth, "token", "gemini-4-carbon-high", payload, false, "", "https://example.invalid", conversationID)
+	if errBuild != nil {
+		t.Fatal(errBuild)
+	}
+	wire, errRead := io.ReadAll(request.Body)
+	if errRead != nil {
+		t.Fatal(errRead)
+	}
+	if errClose := request.Body.Close(); errClose != nil {
+		t.Fatal(errClose)
+	}
+	parts := strings.Split(ojson.GetBytes(wire, "requestId").String(), "/")
+	if len(parts) != 5 {
+		t.Fatalf("requestId = %q, want 5 parts", ojson.GetBytes(wire, "requestId").String())
+	}
+	if parts[0] != "agent" || parts[1] != conversationID || parts[4] != "0" {
+		t.Errorf("requestId parts = %v", parts)
+	}
+	if _, errTimestamp := strconv.ParseInt(parts[2], 10, 64); errTimestamp != nil {
+		t.Errorf("timestamp %q: %v", parts[2], errTimestamp)
+	}
+	if _, errUUID := uuid.Parse(parts[3]); errUUID != nil {
+		t.Errorf("trajectory %q: %v", parts[3], errUUID)
 	}
 }
