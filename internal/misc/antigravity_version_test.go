@@ -62,26 +62,12 @@ func TestAntigravityFallbackVersionMeetsBackendFloor(t *testing.T) {
 	}
 }
 
-func TestAntigravityUserAgentUsesHubFamily(t *testing.T) {
-	for _, tc := range []struct {
-		version string
-		want    string
-	}{
-		{"2.23.0", "antigravity/hub/2.23.0 (aidev_client; os_type=darwin; arch=arm64; cl=998057262)"},
-		{"2.24.0", "antigravity/hub/2.24.0 (aidev_client; os_type=darwin; arch=arm64; cl=1000335682)"},
-		{"2.29.0", "antigravity/hub/2.29.0 (aidev_client; os_type=darwin; arch=arm64; cl=1013060670)"},
-		{"2.30.0", "antigravity/hub/2.30.0 (aidev_client; os_type=darwin; arch=arm64)"},
-	} {
-		t.Run(tc.version, func(t *testing.T) {
-			restore := overrideAntigravityVersionCacheForTest(t, tc.version, time.Now().Add(time.Hour))
-			defer restore()
-			if got := AntigravityUserAgent(); got != tc.want {
-				t.Fatalf("AntigravityUserAgent() = %q, want %q", got, tc.want)
-			}
-		})
+func TestAntigravityUserAgentUsesCLIForm(t *testing.T) {
+	want := "antigravity/cli/1.5.10 (aidev_client; os_type=linux; arch=amd64; cl=1023297289)"
+	if got := AntigravityUserAgent(); got != want {
+		t.Fatalf("AntigravityUserAgent() = %q, want %q", got, want)
 	}
 }
-
 func TestAntigravityFallbackVersionHasMatchingChangelist(t *testing.T) {
 	if antigravityHubChangelists[antigravityFallbackVersion] == "" {
 		t.Fatal("fallback version must be updated together with its verified changelist")
@@ -110,7 +96,7 @@ func TestAntigravityLoadCodeAssistUserAgentUsesShortUA(t *testing.T) {
 	restore := overrideAntigravityVersionCacheForTest(t, "2.2.1", time.Now().Add(time.Hour))
 	defer restore()
 
-	want := "antigravity/hub/2.2.1 (aidev_client; os_type=darwin; arch=arm64)"
+	want := "antigravity/cli/1.5.10 (aidev_client; os_type=linux; arch=amd64; cl=1023297289)"
 	if got := AntigravityLoadCodeAssistUserAgent(""); got != want {
 		t.Fatalf("AntigravityLoadCodeAssistUserAgent() = %q, want %q", got, want)
 	}
@@ -123,7 +109,7 @@ func TestAntigravityOnboardUserUserAgentUsesLongUA(t *testing.T) {
 	restore := overrideAntigravityVersionCacheForTest(t, "2.2.1", time.Now().Add(time.Hour))
 	defer restore()
 
-	want := "antigravity/hub/2.2.1 (aidev_client; os_type=darwin; arch=arm64) google-api-nodejs-client/10.3.0"
+	want := "antigravity/cli/1.5.10 (aidev_client; os_type=linux; arch=amd64; cl=1023297289) google-api-nodejs-client/10.3.0"
 	if got := AntigravityOnboardUserUserAgent(""); got != want {
 		t.Fatalf("AntigravityOnboardUserUserAgent() = %q, want %q", got, want)
 	}

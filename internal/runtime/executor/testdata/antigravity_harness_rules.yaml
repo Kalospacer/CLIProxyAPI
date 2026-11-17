@@ -638,6 +638,8 @@ oauth:
         replacement: You are a general-purpose agentic assistant
       - pattern: (?m)^You are an AI agent powered by DeepSeek Harness\.
         replacement: You are Antigravity, a powerful agentic AI assistant designed by the Google Deepmind team.
+      - pattern: '(?m)^You are a coding agent powered by the [^\n]+ model\.$'
+        replacement: You are a coding agent.
       sensitive-words-replace:
         Claude Agent SDK: Agent SDK
         'Current DeepSeek Harness implementation checkout:': 'Application source checkout:'

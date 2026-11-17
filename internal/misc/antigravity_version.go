@@ -123,14 +123,17 @@ func AntigravityLatestVersion() string {
 	return antigravityFallbackVersion
 }
 
-// AntigravityUserAgent returns the User-Agent string used by the Antigravity Hub family.
+// Antigravity CLI 的真实 UA 取值，来自 antigravity-cli 1.5.10 出站请求实测。
+// 注意 auth_method 是认证模式相关字段，OAuth 模式下的取值尚无实测证据，因此不声明。
+const (
+	antigravityCLIVersion    = "1.5.10"
+	antigravityCLIChangelist = "1023297289"
+	antigravityCLIPlatform   = "os_type=linux; arch=amd64"
+)
+
+// AntigravityUserAgent returns the User-Agent string used by the Antigravity CLI.
 func AntigravityUserAgent() string {
-	version := AntigravityLatestVersion()
-	metadata := "aidev_client; " + antigravityHubPlatform
-	if changelist := antigravityHubChangelists[version]; changelist != "" {
-		metadata += "; cl=" + changelist
-	}
-	return fmt.Sprintf("antigravity/hub/%s (%s)", version, metadata)
+	return fmt.Sprintf("antigravity/cli/%s (aidev_client; %s; cl=%s)", antigravityCLIVersion, antigravityCLIPlatform, antigravityCLIChangelist)
 }
 
 func isAntigravityFamilyUserAgent(lower string) bool {

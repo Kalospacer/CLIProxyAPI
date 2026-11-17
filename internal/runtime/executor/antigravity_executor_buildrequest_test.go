@@ -13,6 +13,7 @@ import (
 	"github.com/MoeForge/moego/ojson"
 	"github.com/google/uuid"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
@@ -708,5 +709,24 @@ func TestAntigravityRequestIDUsesNativeConversationShape(t *testing.T) {
 	}
 	if _, errUUID := uuid.Parse(parts[3]); errUUID != nil {
 		t.Errorf("trajectory %q: %v", parts[3], errUUID)
+	}
+}
+
+func TestAntigravityExecuteUsesConversationRequestID(t *testing.T) {
+	cfg := &config.Config{}
+	payload := []byte(`{"request":{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}}`)
+	metadata := map[string]any{cliproxyexecutor.ExecutionSessionMetadataKey: "sandbox-run-001"}
+	wire := captureAntigravityWireBody(t, cfg, "gemini-4-carbon-high", payload, metadata)
+
+	parts := strings.Split(ojson.GetBytes(wire, "requestId").String(), "/")
+	if len(parts) != 5 {
+		t.Fatalf("requestId = %q, want 5 parts", ojson.GetBytes(wire, "requestId").String())
+	}
+	wantConversation := helps.ProviderSessionUUID("antigravity", metadata)
+	if parts[1] != wantConversation {
+		t.Errorf("conversation = %q, want %q", parts[1], wantConversation)
+	}
+	if parts[4] != "0" {
+		t.Errorf("stepIndex = %q, want 0", parts[4])
 	}
 }

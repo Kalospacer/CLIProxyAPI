@@ -45,6 +45,7 @@ type SensitiveWordMatcher struct {
 	replaceFn         func(string) string
 	lookupReplacement func(string) (string, bool)
 	patternRules      []compiledPatternRule
+	foldsZeroWidth    bool
 }
 
 func (m *SensitiveWordMatcher) hasRules() bool {
@@ -130,7 +131,7 @@ func BuildSensitiveWordMatcherWithPatterns(
 	replacements map[string]string,
 	patterns []config.SensitivePatternRule,
 ) *SensitiveWordMatcher {
-	return buildSensitiveWordMatcher(words, replacements, patterns, obfuscateWord, zeroWidthSpace)
+	return buildSensitiveWordMatcher(words, replacements, patterns, obfuscateWord, zeroWidthSpace, false)
 }
 
 // BuildAntigravitySensitiveWordMatcher compiles a matcher for Antigravity system
@@ -147,7 +148,7 @@ func BuildAntigravitySensitiveWordMatcherWithPatterns(
 	replacements map[string]string,
 	patterns []config.SensitivePatternRule,
 ) *SensitiveWordMatcher {
-	return buildSensitiveWordMatcher(words, replacements, patterns, obfuscateAntigravityPhrase, combiningGraphemeJoiner)
+	return buildSensitiveWordMatcher(words, replacements, patterns, obfuscateAntigravityPhrase, combiningGraphemeJoiner, true)
 }
 
 func buildSensitiveWordMatcher(
@@ -156,6 +157,7 @@ func buildSensitiveWordMatcher(
 	patterns []config.SensitivePatternRule,
 	obfuscateFn func(string) string,
 	marker string,
+	foldsZeroWidth bool,
 ) *SensitiveWordMatcher {
 	if len(words) == 0 && len(replacements) == 0 && len(patterns) == 0 {
 		return nil
@@ -302,6 +304,7 @@ func buildSensitiveWordMatcher(
 		replaceFn:         replaceFn,
 		lookupReplacement: lookupReplacement,
 		patternRules:      compiledPatterns,
+		foldsZeroWidth:    foldsZeroWidth,
 	}
 }
 
@@ -475,7 +478,7 @@ func (m *SensitiveWordMatcher) collectPatternSpans(text string) []patternMatchSp
 			continue
 		}
 		matches := rule.regex.FindAllStringSubmatchIndex(text, -1)
-		if len(matches) == 0 {
+		if len(matches) == 0 && m.foldsZeroWidth {
 			matches = findSpansIgnoringZeroWidth(rule.regex, text)
 		}
 		if len(matches) == 0 {
@@ -597,7 +600,7 @@ func (m *SensitiveWordMatcher) obfuscateLiterals(text string) string {
 	if m == nil || m.regex == nil || text == "" {
 		return text
 	}
-	if hasZeroWidthRunes(text) {
+	if m.foldsZeroWidth && hasZeroWidthRunes(text) {
 		text, _ = squashZeroWidth(text)
 	}
 	if m.replaceFn != nil {

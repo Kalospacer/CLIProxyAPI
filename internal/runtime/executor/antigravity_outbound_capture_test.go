@@ -16,7 +16,7 @@ import (
 )
 
 // captureAntigravityWireBody 走完整 ExecuteStream 链路，返回真实出站请求体。
-func captureAntigravityWireBody(t *testing.T, cfg *config.Config, model string, payload []byte) []byte {
+func captureAntigravityWireBody(t *testing.T, cfg *config.Config, model string, payload []byte, sessionMetadata ...map[string]any) []byte {
 	t.Helper()
 	captured := make(chan []byte, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +43,11 @@ func captureAntigravityWireBody(t *testing.T, cfg *config.Config, model string, 
 			"expired":      time.Now().Add(time.Hour).Format(time.RFC3339),
 		},
 	}
-	result, errStream := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{Model: model, Payload: payload}, cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatAntigravity})
+	options := cliproxyexecutor.Options{SourceFormat: sdktranslator.FormatAntigravity}
+	if len(sessionMetadata) > 0 {
+		options.Metadata = sessionMetadata[0]
+	}
+	result, errStream := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{Model: model, Payload: payload}, options)
 	if errStream != nil {
 		t.Fatal(errStream)
 	}
