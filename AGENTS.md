@@ -18,11 +18,17 @@ Go 1.26+ proxy server providing OpenAI/Gemini/Claude/Codex compatible APIs with 
 - 同步流程：本地 `git merge --no-ff origin/main` → 解决冲突 → `go build ./...` 与关键包测试（`sdk/cliproxy/usage`、`internal/watcher`、`internal/runtime/executor/helps`、`internal/translator/codex`）→ 服务器 `CGO_ENABLED=1` 构建 → 8319 测试端口验证 → 备份生产二进制后替换上线。
 - 固定冲突：`internal/watcher/config_reload.go` 一律取上游实现（`configApplyMu` 串行化 + 重载后记录 `config.SourceHash`）。不要保留本 fork 的旧写法。
 - `sdk/pluginapi` 必须保留 `UsageDetail.Breakdown` 与 `UsageTokenBreakdown*`（本 fork 新增，下游 `cpa-key-billing` 依赖宿主 token 口径）。上游没有这些类型，合并后需确认仍在。
-- 插件是 `-buildmode=plugin` 动态库，与宿主共享 `sdk/pluginapi` 的结构体布局；任何字段增删都要重建全部启用插件。`kimi-apijson-editor` 本地无源码，不能重建，因此不要改动该包结构体。
+- 生产插件通过 C ABI / JSON 动态库接口加载，不使用 Go `plugin.Open`；修改 `sdk/pluginapi` 时仍需用隔离实例验证真实插件加载和实际行为，不应仅凭结构体变化断言兼容。
 - token 记账修复不要回退：subset 语义下允许上报的 reasoning 大于 output（`NewSubsetTokenBreakdownWithReportedReasoning`），以及 `internal/runtime/executor/helps/openai_compat_envelope.go` 对 `{"data":…,"success":true}` 包裹响应的解包。
 - 已下线、不再恢复：`internal/translator/common/reasoning_default.go`（按注册档位挑选最接近的 reasoning effort）与 `/v1/models/api.json` 的 `support_efforts` 字段。
 - 同步进度：上游已合并至 `43f27e3a`，本 fork 合并提交 `e9ab3fd9`。该次合并在 `sdk/pluginapi` 仅新增 `HostAuthModelsRequest`、`HostAuthModelsResponse`、`HostAuthModels` 三个独立类型，未改动既有结构体字段，因此现有插件无需重建即可加载。
 - `cmd/server` 已移除 `-port` 启动参数，监听端口只由配置文件 `port` 决定。创建 8319 测试实例时，需复制配置文件并把 `port`、`oauth.auth-dir`、`plugins.dir`、`plugins.configs.*.state_file` 改到独立路径，再以 `--config` 启动。
+
+## 本次上游同步状态
+- 独立工作区已将 PR #11 的上游 `7df56074` 合并到基线 `fe1e08b4`，解决了 `sdk/cliproxy/service_executors.go` 中的执行器注册冲突；该合并尚未提交或推送。
+- 原帖规则及 DSH、OpenCode 身份替换为部署配置，不属于仓库默认配置；替换仅作用于 Antigravity 系统指令，无法识别系统指令内文本的来源。
+- Go 1.26.10、CGO 构建及相关测试已通过；4 个生产插件文件在无外网的隔离实例中完成加载和注册，业务功能仍需单独验证。
+- 2026-11-18：该未提交合并构建已部署至 `/opt/cliproxy/cli-proxy-api`；生产配置启用了 14 条正则和 1 条词替换。健康检查与模型列表正常；无 Antigravity OAuth 凭证的真实上游请求验证。
 
 ## Commands
 ```bash
@@ -69,7 +75,7 @@ go build -o test-output ./cmd/server && rm test-output # Verify compile (REQUIRE
 - As a rule, do not make standalone changes to `internal/translator/`. You may modify it only as part of broader changes elsewhere.
 - If a task requires changing only `internal/translator/`, run `gh repo view --json viewerPermission -q .viewerPermission` to confirm you have `WRITE`, `MAINTAIN`, or `ADMIN`. If you do, you may proceed; otherwise, file a GitHub issue including the goal, rationale, and the intended implementation code, then stop further work.
 - `internal/runtime/executor/` should contain executors and their unit tests only. Place any helper/supporting files under `internal/runtime/executor/helps/`.
-- Do not use `github.com/tidwall/gjson`, `github.com/tidwall/sjson`, or Go's standard `encoding/base64`. Always use `github.com/MoeForge/moego/ojson` and `github.com/MoeForge/moego/base64` for all JSON and Base64 operations. All JSON write operations (`Set`, `SetRaw`, `Delete`, etc.) MUST be performed on `*ojson.Doc` (`ojson.NewDoc` / `ojson.NewDocString`), passing `*ojson.Doc` across mutation stages and serializing only once at the final exit (`doc.Bytes()` / `doc.String()`), rather than mutating raw `[]byte` or `string` payloads directly.
+- Do not use `github.com/tidwall/gjson`, `github.com/tidwall/sjson`, Go's standard `encoding/json`, Go's standard `encoding/base64`, or Go's standard `regexp`. Always use `github.com/MoeForge/moego/json`, `github.com/MoeForge/moego/ojson`, `github.com/MoeForge/moego/base64`, and `github.com/MoeForge/moego/regexp` for all JSON, Base64, and regular expression operations. All JSON write operations (`Set`, `SetRaw`, `Delete`, etc.) MUST be performed on `*ojson.Doc` (`ojson.NewDoc` / `ojson.NewDocString`), passing `*ojson.Doc` across mutation stages and serializing only once at the final exit (`doc.Bytes()` / `doc.String()`), rather than mutating raw `[]byte` or `string` payloads directly.
 - Payload configuration MUST be the final semantic barrier before sending requests in every executor, including streaming, WebSocket, continuation, retry/fallback, image, and token-count paths where applicable. Complete all built-in payload translation, normalization, injection, and cleanup first, then evaluate and apply user payload rules exactly once to the final business payload. No subsequent logic may overwrite configured values or restore filtered fields. Only necessary transport framing, serialization, signature calculation, and read-only validation may follow without changing business payload semantics. Add regression tests when introducing or changing request-building paths to enforce this ordering.
 - Follow `gofmt`; keep imports goimports-style; wrap errors with context where helpful
 - Do not use `log.Fatal`/`log.Fatalf` (terminates the process); prefer returning errors and logging via logrus
