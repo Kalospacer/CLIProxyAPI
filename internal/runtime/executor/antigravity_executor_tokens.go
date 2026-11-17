@@ -66,8 +66,8 @@ func (e *AntigravityExecutor) CountTokens(ctx context.Context, auth *cliproxyaut
 	if errThinking := helps.ApplyRequestThinkingDoc(doc, req, opts, from.String(), to.String(), e.Identifier()); errThinking != nil {
 		return cliproxyexecutor.Response{}, errThinking
 	}
-	if errRewrite := helps.ObfuscateSensitiveAntigravityPayloadDoc(doc, e.getSensitiveWordMatcher()); errRewrite != nil {
-		return cliproxyexecutor.Response{}, cliproxyauth.NewRequestScopedError(errRewrite.Error(), http.StatusBadRequest)
+	if errRewrite := e.rewriteHarnessText(doc); errRewrite != nil {
+		return cliproxyexecutor.Response{}, errRewrite
 	}
 	helps.PrepareAntigravityClaudeStructuredOutputDoc(baseModel, doc)
 	sanitizeAntigravityGeminiRequestSignaturesDoc(baseModel, doc)

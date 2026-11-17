@@ -23,6 +23,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// antigravityCCPASessionID 是原生 CCPA 出站请求的会话标识，取空字符串的 FNV-1a 64 位有符号值。
 const antigravityCCPASessionID = "-3750763034362895579"
 
 func (e *AntigravityExecutor) buildRequest(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, payload []byte, stream bool, alt, baseURL string) (*http.Request, error) {

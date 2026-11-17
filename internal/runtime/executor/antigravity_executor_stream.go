@@ -101,8 +101,8 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 
 	finalize := helps.NewPayloadFinalizer(e.cfg, e.Identifier(), baseModel, "antigravity", "request", originalTranslated, req, opts)
 	ctx = helps.WithPayloadFinalizer(ctx, finalize)
-	if errRewrite := helps.ObfuscateSensitiveAntigravityPayloadDoc(doc, e.getSensitiveWordMatcher()); errRewrite != nil {
-		return nil, cliproxyauth.NewRequestScopedError(errRewrite.Error(), http.StatusBadRequest)
+	if errRewrite := e.rewriteHarnessText(doc); errRewrite != nil {
+		return nil, errRewrite
 	}
 	sanitizeAntigravityGeminiRequestSignaturesDoc(baseModel, doc)
 	_ = doc.Delete("request.stream")

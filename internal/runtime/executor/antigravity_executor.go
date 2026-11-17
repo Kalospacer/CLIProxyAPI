@@ -97,6 +97,14 @@ func (e *AntigravityExecutor) getSensitiveWordMatcher() *helps.SensitiveWordMatc
 	return e.cachedMatcher
 }
 
+// rewriteHarnessText 在出站前替换第三方 harness 特征文本，失败时按请求级错误返回。
+func (e *AntigravityExecutor) rewriteHarnessText(doc *ojson.Doc) error {
+	if errRewrite := helps.ObfuscateSensitiveAntigravityPayloadDoc(doc, e.getSensitiveWordMatcher()); errRewrite != nil {
+		return cliproxyauth.NewRequestScopedError(errRewrite.Error(), http.StatusBadRequest)
+	}
+	return nil
+}
+
 func (e *AntigravityExecutor) obfuscateSensitiveWords(payload []byte) []byte {
 	matcher := e.getSensitiveWordMatcher()
 	if matcher == nil {
