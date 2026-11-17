@@ -27,8 +27,7 @@ Go 1.26+ proxy server providing OpenAI/Gemini/Claude/Codex compatible APIs with 
 ## 本次上游同步状态
 - 本工作区正在对照 Antigravity 2.32.1 CCPA：出站普通文本请求使用空串 FNV-1a 的有符号值，无 trajectory 时的 requestId 使用 `requestType/UUID`；内部推理回放仍按原有会话派生隔离。429、重试及 Worker 不在本次修改范围。
 - 按当前任务要求，Antigravity 的敏感内容规则仅处理最终请求中的系统指令和普通对话文本；工具名称、声明、参数、调用和结果不由该规则改写。更多客户端样本及原版传输仍在调查，当前工作区未部署。
-- `internal/runtime/executor/testdata/antigravity_harness_rules.yaml` 保存改写规则，共 56 条正则；普通文本样本覆盖 DSH 身份与上下文、Claude Code 2.1.299 完整默认提示、本机 Codex 5 份完整模板。Claude Code 采用整块替换：命中身份锚点后整段指令替换为中性的 Antigravity 身份文本。OpenCode 覆盖已按交付范围移除。
-- 整块替换规则必须排在 `sensitive-patterns-replace` 首位，否则小节规则会先占据匹配区间，导致整块规则被丢弃。
+- `internal/runtime/executor/testdata/antigravity_harness_rules.yaml` 保存改写规则，共 55 条正则；覆盖 DSH 身份与上下文、Claude Code 身份句与风格段、本机 Codex 5 份完整模板。只替换特征句，客户端自带提示词中的工具纪律、上下文管理与任务收尾段落保持原样，避免整块替换连带丢掉工具行为指引。OpenCode 覆盖已按交付范围移除，生产配置未更新。
 - 改写顺序是硬约束：敏感内容替换必须早于结构化输出 schema 注入与 payload override。放到最终出口会连带改写内联 JSON schema 和用户覆盖文本，破坏结构化输出与 override 语义。
 - 独立工作区已将 PR #11 的上游 `7df56074` 合并到基线 `fe1e08b4`，解决了 `sdk/cliproxy/service_executors.go` 中的执行器注册冲突，并把结果快进合并到 `main`（`0c091453`），PR #11 状态为已合并。
 - 生产环境中的原帖规则及 DSH、OpenCode 身份替换属于部署配置；线上当前实现仅作用于 Antigravity 系统指令，独立工作区的普通对话文本扩展尚未部署。

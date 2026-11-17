@@ -2,7 +2,6 @@ package executor
 
 import (
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
@@ -140,8 +139,7 @@ func TestAntigravityHarnessRulesRewriteClaudeStyles(t *testing.T) {
 		}
 	}
 }
-
-func TestAntigravityRewritesClaudeCodeDefaultPrompt(t *testing.T) {
+func TestAntigravityRewritesClaudeCodeIdentity(t *testing.T) {
 	raw, errRead := os.ReadFile("testdata/antigravity_harness_rules.yaml")
 	if errRead != nil {
 		t.Fatal(errRead)
@@ -154,25 +152,15 @@ func TestAntigravityRewritesClaudeCodeDefaultPrompt(t *testing.T) {
 	if matcher == nil {
 		t.Fatal("missing harness matcher")
 	}
-	data := loadAntigravityPromptCorpus(t, "testdata/antigravity_claude_samples.json")
-	if len(data.Samples) != 1 {
-		t.Fatalf("unexpected sample count: %d", len(data.Samples))
+	cases := []struct{ input, want string }{
+		{"You are Claude Code, Anthropic's official CLI for Claude.", "You are an interactive CLI coding agent."},
+		{"You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.", "You are an interactive CLI coding agent."},
+		{"You are a Claude agent, built on Anthropic's Claude Agent SDK.", "You are an interactive CLI coding agent."},
+		{"You are Claude Code, an AI assistant that orchestrates software engineering tasks across multiple workers.", "You are an agent that coordinates software engineering tasks across multiple workers."},
 	}
-	for _, tc := range data.Cases {
-		if got := matcher.ObfuscateText(tc.Input); got != tc.Want {
-			t.Errorf("case %s = %q, want %q", tc.Name, got, tc.Want)
-		}
-	}
-	for _, sample := range data.Samples {
-		got := matcher.ObfuscateText(sample.Input)
-		if got != sample.Want {
-			t.Errorf("template %s did not receive its neutral rewrite", sample.Name)
-			continue
-		}
-		for _, marker := range []string{"Claude Code", "Anthropic", "# Doing tasks", "# Tone and style", "# Using your tools"} {
-			if strings.Contains(got, marker) {
-				t.Errorf("template %s kept harness marker %q", sample.Name, marker)
-			}
+	for i, tc := range cases {
+		if got := matcher.ObfuscateText(tc.input); got != tc.want {
+			t.Errorf("case %d = %q, want %q", i, got, tc.want)
 		}
 	}
 }
