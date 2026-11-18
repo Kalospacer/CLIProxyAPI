@@ -118,3 +118,9 @@ go build -o test-output ./cmd/server && rm test-output # Verify compile (REQUIRE
 - 2026-11-18：1.17.13 原版 CLI 在仅回环沙盒完成专项前后真实文件工具循环；请求头与正文对照 Antigravity 原生样本。
 - 规则包现有 141 条正则、68 条字面替换。可执行路径、环境变量和工具合同保留，详细证据及未验证项见 `docs/antigravity-opencode-real-client.zh-CN.md`。
 - 本批只推送暂存分支；按用户最新授权，后续完成三客户端后统一合并 main、加载规则并部署。旧记录中“OpenCode 排除/不部署”不再约束本批任务。
+
+## Claude Code 真实客户端专项记录
+
+- 2026-11-18：2.1.299 原版 CLI 在仅回环沙盒完成专项前后真实文件工具循环；请求头与正文对照 Antigravity 原生样本。
+- 规则包现有 203 条正则、68 条字面替换。可执行路径、环境变量和工具合同保留，详细证据及未验证项见 `docs/antigravity-claude-real-client.zh-CN.md`。
+- 本批只推送暂存分支；按用户最新授权，后续完成三客户端后统一合并 main、加载规则并部署。旧记录中“OpenCode 排除/不部署”不再约束本批任务。
