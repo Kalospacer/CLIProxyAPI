@@ -106,3 +106,9 @@ go build -o test-output ./cmd/server && rm test-output # Verify compile (REQUIRE
 - 原版 AstrBot v4.28.0 / `a4121464` 真实主代理与内置文件工具在未加专项规则前，通过 Chat/Responses 流式及非流式四项读文件和带历史后续请求；SDK 头被通用出口隔离。
 - 八条实测固定指引句复用配置规则做中性改写，工具声明、生成参数、安全约束和动态目录保持；专项后四项再次通过。规则包需要显式加载到运行配置，只替换二进制不会自动启用，生产配置未修改。
 - 五个工具仍有原有 schema 清理；原版 provider 未发送显式 session/cache 标识。探针不是完整 CPA API router，不从两段 requestId 推断生产行为。详细记录见 `docs/antigravity-astrbot-4.28-compat.zh-CN.md`。
+
+## Codex 真实客户端专项记录
+
+- 2026-11-18：0.160.0 原版 CLI 在仅回环沙盒完成专项前后真实文件工具循环；请求头与正文对照 Antigravity 原生样本。
+- 规则包现有 101 条正则、66 条字面替换。可执行路径、环境变量和工具合同保留，详细证据及未验证项见 `docs/antigravity-codex-real-client.zh-CN.md`。
+- 本批只推送暂存分支；按用户最新授权，后续完成三客户端后统一合并 main、加载规则并部署。旧记录中“OpenCode 排除/不部署”不再约束本批任务。

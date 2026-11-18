@@ -604,6 +604,9 @@ func (m *SensitiveWordMatcher) obfuscateLiterals(text string) string {
 		text, _ = squashZeroWidth(text)
 	}
 	if m.replaceFn != nil {
+		if m.foldsZeroWidth {
+			return m.obfuscateAntigravityLiterals(text)
+		}
 		return m.regex.ReplaceAllStringFunc(text, m.replaceFn)
 	}
 	return m.regex.ReplaceAllStringFunc(text, obfuscateWord)

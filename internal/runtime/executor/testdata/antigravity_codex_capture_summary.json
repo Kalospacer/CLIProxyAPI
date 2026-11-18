@@ -1,0 +1,77 @@
+[
+  {
+    "client": "codex",
+    "cases": {
+      "baseline": {
+        "header_names": [
+          "accept-encoding",
+          "authorization",
+          "content-length",
+          "content-type",
+          "host",
+          "user-agent"
+        ],
+        "inbound_header_count": 13,
+        "tool_names": [
+          "exec_command",
+          "write_stdin",
+          "request_user_input",
+          "view_image",
+          "multi_agent_v1__close_agent",
+          "multi_agent_v1__resume_agent",
+          "multi_agent_v1__send_input",
+          "multi_agent_v1__spawn_agent",
+          "multi_agent_v1__wait_agent",
+          "get_goal",
+          "create_goal",
+          "update_goal"
+        ],
+        "generation_config": {
+          "thinkingConfig": {
+            "thinkingLevel": "low",
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 65535
+        },
+        "system_chars": 19260,
+        "request_id_parts": 5,
+        "requests_sha256": "30520a3e93f1508b22f644758ec16b35b20dd5e65c6ab9c0e4ef444e1363e00e"
+      },
+      "final": {
+        "header_names": [
+          "accept-encoding",
+          "authorization",
+          "content-length",
+          "content-type",
+          "host",
+          "user-agent"
+        ],
+        "inbound_header_count": 13,
+        "tool_names": [
+          "exec_command",
+          "write_stdin",
+          "request_user_input",
+          "view_image",
+          "multi_agent_v1__close_agent",
+          "multi_agent_v1__resume_agent",
+          "multi_agent_v1__send_input",
+          "multi_agent_v1__spawn_agent",
+          "multi_agent_v1__wait_agent",
+          "get_goal",
+          "create_goal",
+          "update_goal"
+        ],
+        "generation_config": {
+          "thinkingConfig": {
+            "thinkingLevel": "low",
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 65535
+        },
+        "system_chars": 9709,
+        "request_id_parts": 5,
+        "requests_sha256": "340e0bf1d1202eb73dbcdf33950141924762df58180cbf2d389d8a6e177b864a"
+      }
+    }
+  }
+]
