@@ -27,7 +27,7 @@ Go 1.26+ proxy server providing OpenAI/Gemini/Claude/Codex compatible APIs with 
 ## 本次上游同步状态
 - 本工作区正在对照 Antigravity 2.32.1 CCPA：出站普通文本请求使用空串 FNV-1a 的有符号值，无 trajectory 时的 requestId 使用 `requestType/UUID`；内部推理回放仍按原有会话派生隔离。429、重试及 Worker 不在本次修改范围。
 - 按当前任务要求，Antigravity 的敏感内容规则仅处理最终请求中的系统指令和普通对话文本；工具名称、声明、参数、调用和结果不由该规则改写。当前工作区未部署。
-- `internal/runtime/executor/testdata/antigravity_harness_rules.yaml` 保存改写规则，共 56 条正则和 58 条字面替换；覆盖 DSH 身份与上下文、Claude Code 身份句与风格段、本机 Codex 5 份完整模板。DSH 实测系统提示词中的 12 段工具行为指引均已改为中性表述，工具名保持不变。OpenCode 覆盖已按交付范围移除，生产配置未更新。
+- `internal/runtime/executor/testdata/antigravity_harness_rules.yaml` 保存改写规则，共 56 条正则和 66 条字面替换；覆盖 DSH 身份与上下文、Claude Code 身份句与风格段、本机 Codex 5 份完整模板。DSH 实测系统提示词中的 12 段工具行为指引均已改为中性表述，工具名保持不变。OpenCode 覆盖已按交付范围移除，生产配置未更新。
 - 改写顺序是硬约束：敏感内容替换必须早于结构化输出 schema 注入与 payload override。放到最终出口会连带改写内联 JSON schema 和用户覆盖文本，破坏结构化输出与 override 语义。
 - requestId 采用原生五段形态 `requestType/conversationId/时间戳/trajectoryId/stepIndex`，会话标识取 CPA 会话派生 UUID；无会话时退化为 `requestType/UUID`。trajectoryId 由会话标识派生，与原生按轨迹推进的语义仍有差距。
 - UA 采用实测 Antigravity CLI 1.5.10 形态：`antigravity/cli/1.5.10 (aidev_client; os_type=linux; arch=amd64; cl=1023297289)`；桌面版回退版本仍为 2.32.1。TLS 侧沿用上游既有实现：强制 HTTP/1.1 并清空 ALPN，与原生 Go 客户端一致，已有测试锁定。
@@ -99,3 +99,10 @@ go build -o test-output ./cmd/server && rm test-output # Verify compile (REQUIRE
 - Avoid wall-clock `time.Sleep` in TTL, expiration, ordering, or cache-eviction unit tests due to platform timer granularity (e.g. Windows default timer resolution of ~15.6ms) and CI jitter under load; prefer controllable clocks (`nowFunc` / mock clock), explicit timestamp manipulation, or deterministic synchronization primitives.
 - Note: if modifying features that involve CLIProxyAPIHome, check if corresponding updates are needed in the CLIProxyAPIHome repository.
 - Endpoints under the `/v0/management` base URL are deprecated and no longer maintained. For any feature changes, do not modify endpoints under `/v0/management` unless necessary to fix compilation errors.
+
+## AstrBot 4.28.0 专项记录
+
+- 通用基准提交为 `71619995`，已推送 `staging/antigravity-native-egress-20261118`；未合并或部署。
+- 原版 AstrBot v4.28.0 / `a4121464` 真实主代理与内置文件工具在未加专项规则前，通过 Chat/Responses 流式及非流式四项读文件和带历史后续请求；SDK 头被通用出口隔离。
+- 八条实测固定指引句复用配置规则做中性改写，工具声明、生成参数、安全约束和动态目录保持；专项后四项再次通过。规则包需要显式加载到运行配置，只替换二进制不会自动启用，生产配置未修改。
+- 五个工具仍有原有 schema 清理；原版 provider 未发送显式 session/cache 标识。探针不是完整 CPA API router，不从两段 requestId 推断生产行为。详细记录见 `docs/antigravity-astrbot-4.28-compat.zh-CN.md`。
