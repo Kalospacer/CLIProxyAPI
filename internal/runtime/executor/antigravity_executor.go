@@ -1043,33 +1043,20 @@ func (e *AntigravityExecutor) HttpRequest(ctx context.Context, auth *cliproxyaut
 	if ctx == nil {
 		ctx = req.Context()
 	}
-	httpReq := req.WithContext(ctx)
+	httpReq := req.Clone(ctx)
 
-	// Connection management is a Request field, not a header, so the header
-	// whitelist below cannot strip it. An inbound "Connection: close" makes Go's
-	// server set Request.Close, and WithContext copies that field verbatim, which
-	// would both leak the downstream header upstream and drain the shared pool.
-	httpReq.Close = false
-
-	// --- Whitelist: save only the headers we need from the original request ---
+	// 保留内容类型，其余头部和连接字段由统一出口构造；克隆避免修改入站请求。
 	contentType := httpReq.Header.Get("Content-Type")
-
-	// Wipe ALL incoming headers
-	for k := range httpReq.Header {
-		delete(httpReq.Header, k)
-	}
-
-	// --- Set only the headers Antigravity actually sends ---
-	if contentType != "" {
-		httpReq.Header.Set("Content-Type", contentType)
-	}
-	// Content-Length is managed automatically by Go's http.Client from the Body
-	httpReq.Header.Set("User-Agent", resolveUserAgent(auth))
 
 	// Inject Authorization: Bearer <token>
 	if err := e.PrepareRequest(httpReq, auth); err != nil {
 		return nil, err
 	}
+	var attrs map[string]string
+	if auth != nil {
+		attrs = auth.Attributes
+	}
+	helps.ConfigureAntigravityRequest(httpReq, httpReq.Header.Get("Authorization"), resolveUserAgent(auth), contentType, attrs)
 
 	httpClient := newAntigravityHTTPClient(ctx, e.cfg, auth, 0)
 	return helps.WithAntigravityHTTPClientTrace(httpClient, auth, "http_request").Do(httpReq)

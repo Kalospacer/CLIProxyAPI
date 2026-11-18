@@ -26,6 +26,12 @@ import (
 // antigravityCCPASessionID 是原生 CCPA 出站请求的会话标识，取空字符串的 FNV-1a 64 位有符号值。
 const antigravityCCPASessionID = "-3750763034362895579"
 
+const (
+	// 以下缺省值只来自 CLI 1.5.10 的 gemini-3.1-pro-preview 实测请求。
+	antigravityDefaultMaxOutputTokens = 65535
+	antigravityDefaultThinkingBudget  = 1024
+)
+
 func (e *AntigravityExecutor) buildRequest(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, payload []byte, stream bool, alt, baseURL string, conversationIDs ...string) (*http.Request, error) {
 	doc := ojson.NewDoc(payload)
 	httpReq, _, err := e.buildRequestDoc(ctx, auth, token, modelName, doc, stream, alt, baseURL, conversationIDs...)
@@ -80,17 +86,19 @@ func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliprox
 	}
 
 	isClaudeModel := strings.Contains(modelName, "claude")
-	useAntigravitySchema := isClaudeModel || strings.Contains(modelName, "gemini-3-pro") || strings.Contains(modelName, "gemini-3.1-pro")
 	if antigravityRequestNeedsSchemaSanitizationDoc(doc) {
-		sanitizeAntigravityRequestSchemasForModelDoc(doc, useAntigravitySchema, isClaudeModel)
+		// 必填占位字段属于 Claude VALIDATED 兼容要求，Gemini 工具不新增参数。
+		sanitizeAntigravityRequestSchemasForModelDoc(doc, isClaudeModel, isClaudeModel)
 	}
 	if isClaudeModel {
 		if !promptStructuredOutput {
 			_ = doc.Set("request.toolConfig.functionCallingConfig.mode", "VALIDATED")
 		}
-	} else {
+	} else if doc.Get("requestType").String() != "agent" {
 		_ = doc.Delete("request.generationConfig.maxOutputTokens")
 	}
+	applyAntigravityDefaultGenerationConfigDoc(doc, modelName)
+	helps.NormalizeAntigravityAgentRequestDoc(doc)
 
 	applyAntigravityNativeSignatureReplayIfNeededDoc(modelName, doc)
 	helps.FinalizePayloadDoc(ctx, doc)
@@ -111,17 +119,11 @@ func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliprox
 	// Connection header and keeps its HTTP/1.1 connections alive, so forcing
 	// "Connection: close" would both deviate from that fingerprint and defeat the
 	// shared connection pool by discarding every established TCP + TLS session.
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+token)
-	httpReq.Header.Set("User-Agent", resolveUserAgent(auth))
-	if host := resolveHost(base); host != "" {
-		httpReq.Host = host
-	}
 	var attrs map[string]string
 	if auth != nil {
 		attrs = auth.Attributes
 	}
-	util.ApplyCustomHeadersFromAttrs(httpReq, attrs)
+	helps.ConfigureAntigravityRequest(httpReq, "Bearer "+token, resolveUserAgent(auth), "application/json", attrs)
 
 	var authID, authLabel, authType, authValue string
 	if auth != nil {
@@ -142,6 +144,45 @@ func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliprox
 	})
 
 	return httpReq, finalPayload, nil
+}
+
+// applyAntigravityDefaultGenerationConfigDoc 仅为已实测 CLI 模型补齐缺省生成配置。
+// 显式字段优先；其他模型继续沿用现有思考转换和模型配置。
+func applyAntigravityDefaultGenerationConfigDoc(doc *ojson.Doc, modelName string) {
+	if doc == nil || doc.Get("requestType").String() != "agent" {
+		return
+	}
+	if modelName != "gemini-3.1-pro-preview" {
+		return
+	}
+
+	modelInfo := registry.LookupModelInfo(modelName, "antigravity")
+	if !doc.Get("request.generationConfig.maxOutputTokens").Exists() && modelInfo != nil {
+		maxOutputTokens := antigravityDefaultMaxOutputTokens
+		limit := modelInfo.MaxCompletionTokens
+		if limit <= 0 {
+			limit = modelInfo.OutputTokenLimit
+		}
+		if limit > 0 && limit < maxOutputTokens {
+			maxOutputTokens = limit
+		}
+		if maxOutputTokens > 0 {
+			_ = doc.Set("request.generationConfig.maxOutputTokens", maxOutputTokens)
+		}
+	}
+
+	if doc.Get("request.generationConfig.thinkingConfig").Exists() || modelInfo == nil || modelInfo.Thinking == nil {
+		return
+	}
+	thinkingBudget := antigravityDefaultThinkingBudget
+	if modelInfo.Thinking.Min > 0 && thinkingBudget < modelInfo.Thinking.Min {
+		thinkingBudget = modelInfo.Thinking.Min
+	}
+	if modelInfo.Thinking.Max > 0 && thinkingBudget > modelInfo.Thinking.Max {
+		thinkingBudget = modelInfo.Thinking.Max
+	}
+	_ = doc.Set("request.generationConfig.thinkingConfig.includeThoughts", true)
+	_ = doc.Set("request.generationConfig.thinkingConfig.thinkingBudget", thinkingBudget)
 }
 
 // sanitizeAntigravityRequestSchemas cleans the JSON schemas carried by an Antigravity request.

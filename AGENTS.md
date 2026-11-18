@@ -26,16 +26,21 @@ Go 1.26+ proxy server providing OpenAI/Gemini/Claude/Codex compatible APIs with 
 
 ## 本次上游同步状态
 - 本工作区正在对照 Antigravity 2.32.1 CCPA：出站普通文本请求使用空串 FNV-1a 的有符号值，无 trajectory 时的 requestId 使用 `requestType/UUID`；内部推理回放仍按原有会话派生隔离。429、重试及 Worker 不在本次修改范围。
-- 按当前任务要求，Antigravity 的敏感内容规则仅处理最终请求中的系统指令和普通对话文本；工具名称、声明、参数、调用和结果不由该规则改写。更多客户端样本及原版传输仍在调查，当前工作区未部署。
-- `internal/runtime/executor/testdata/antigravity_harness_rules.yaml` 保存改写规则，共 55 条正则；覆盖 DSH 身份与上下文、Claude Code 身份句与风格段、本机 Codex 5 份完整模板。只替换特征句，客户端自带提示词中的工具纪律、上下文管理与任务收尾段落保持原样，避免整块替换连带丢掉工具行为指引。OpenCode 覆盖已按交付范围移除，生产配置未更新。
+- 按当前任务要求，Antigravity 的敏感内容规则仅处理最终请求中的系统指令和普通对话文本；工具名称、声明、参数、调用和结果不由该规则改写。当前工作区未部署。
+- `internal/runtime/executor/testdata/antigravity_harness_rules.yaml` 保存改写规则，共 56 条正则和 58 条字面替换；覆盖 DSH 身份与上下文、Claude Code 身份句与风格段、本机 Codex 5 份完整模板。DSH 实测系统提示词中的 12 段工具行为指引均已改为中性表述，工具名保持不变。OpenCode 覆盖已按交付范围移除，生产配置未更新。
 - 改写顺序是硬约束：敏感内容替换必须早于结构化输出 schema 注入与 payload override。放到最终出口会连带改写内联 JSON schema 和用户覆盖文本，破坏结构化输出与 override 语义。
 - requestId 采用原生五段形态 `requestType/conversationId/时间戳/trajectoryId/stepIndex`，会话标识取 CPA 会话派生 UUID；无会话时退化为 `requestType/UUID`。trajectoryId 由会话标识派生，与原生按轨迹推进的语义仍有差距。
-- UA 回退版本对齐到本机 2.32.1，changelist 取该构建的 1021296516。TLS 侧沿用上游既有实现：强制 HTTP/1.1 并清空 ALPN，与原生 Go 客户端一致，已有测试锁定。
-- 敏感词匹配会先剔除零宽字符再匹配，命中区间映射回原文；字面替换路径同样先归一化，覆盖被零宽字符打断的特征句。
+- UA 采用实测 Antigravity CLI 1.5.10 形态：`antigravity/cli/1.5.10 (aidev_client; os_type=linux; arch=amd64; cl=1023297289)`；桌面版回退版本仍为 2.32.1。TLS 侧沿用上游既有实现：强制 HTTP/1.1 并清空 ALPN，与原生 Go 客户端一致，已有测试锁定。
+- 缺省生成配置只应用于 CLI 1.5.10 已实测的 `gemini-3.1-pro-preview`：缺省输出上限不超过 65535，缺省思考预算为 1024；显式配置和既有思考转换优先。其他模型不根据该样本补值。保留真实传入的 `request.labels`，未知标签不伪造。
+- 敏感词匹配会先剔除零宽字符再匹配，命中区间映射回原文；字面替换路径同样先归一化，覆盖被零宽字符打断的特征句。CRLF 行尾风险已核查，当前只有 persona 规则使用 `$` 行尾锚点，并已写成 `\r?$`。
 - 独立工作区已将 PR #11 的上游 `7df56074` 合并到基线 `fe1e08b4`，解决了 `sdk/cliproxy/service_executors.go` 中的执行器注册冲突，并把结果快进合并到 `main`（`0c091453`），PR #11 状态为已合并。
-- 生产环境中的原帖规则及 DSH、OpenCode 身份替换属于部署配置；线上当前实现仅作用于 Antigravity 系统指令，独立工作区的普通对话文本扩展尚未部署。
-- Go 1.26.10、CGO 构建及相关测试已通过；4 个生产插件文件在无外网的隔离实例中完成加载和注册，业务功能仍需单独验证。
-- 2026-11-18：该未提交合并构建已部署至 `/opt/cliproxy/cli-proxy-api`；生产配置启用了 14 条正则和 1 条词替换。健康检查与模型列表正常；无 Antigravity OAuth 凭证的真实上游请求验证。
+- 生产环境中的原帖规则及 DSH、OpenCode 身份替换属于部署配置；线上当前实现仅作用于 Antigravity 系统指令，独立工作区的普通对话文本扩展和生成配置默认值尚未部署。
+- Go 1.26.10 的 Antigravity 定向测试和 executor 全包测试已通过；`internal/thinking` 的 `TestClaudeToCodexStandaloneEffort` 在未修改的 HEAD 上同样失败，属于基线问题。
+- 2026-11-18：线上 `/opt/cliproxy/cli-proxy-api` 仍使用旧构建；生产配置启用了 14 条正则和 1 条词替换。本次工作区修改尚未提交、构建产物尚未部署。
+- 通用 Antigravity 出口：生成、计数及直接 HTTP 转发共用 `helps.ConfigureAntigravityRequest`，只从出口配置构造基础头部，管理员自定义头最后生效。直接转发先克隆请求，清除入站 Host、RequestURI、Close、Trailer 和显式分帧信息，不修改调用方 Header map。
+- agent 正文在 payload override 之前补缺失的 systemInstruction.role=user，并把纯 functionDeclarations 容器组织为一声明一容器；混有其他配置的容器保留作用域。不会按客户端名称决定是否处理，也不重写未知提示词或工具内容。
+- Gemini 不再进入 Claude VALIDATED 的占位参数注入路径；既有 enum 等工具格式兼容转换保留。离线真实 DSH 样本仍有 7 个工具的参数格式转换，不能宣称工具 schema 完全不变。
+- 通用出口已有陌生 Responses/Chat、直接转发不污染入站请求、payload override 和缺省值边界测试。相关 executor/helps/misc/Antigravity translator 包测试、服务端构建及 10 项回环隔离检查通过。真实客户端探针走生产执行器和翻译器，不是完整 CPA API router；原生 OAuth 全头、Worker 到源站及 TLS 尚未抓取。
 
 ## Commands
 ```bash

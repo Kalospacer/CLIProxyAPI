@@ -210,6 +210,83 @@ func TestAntigravityBuildRequestUsesNativeCCPASession(t *testing.T) {
 	}
 }
 
+func TestAntigravityBuildRequest_AddsNativeAgentGenerationDefaults(t *testing.T) {
+	body := buildRequestBodyFromRawPayload(t, "gemini-3.1-pro-preview", []byte(`{
+		"request": {
+			"contents": [
+				{
+					"role": "user",
+					"parts": [{"text": "hello"}]
+				}
+			]
+		}
+	}`))
+
+	request, ok := body["request"].(map[string]any)
+	if !ok {
+		t.Fatalf("request missing or invalid: %v", body["request"])
+	}
+	generationConfig, ok := request["generationConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("generationConfig missing or invalid: %v", request["generationConfig"])
+	}
+	if got := generationConfig["maxOutputTokens"]; got != float64(65535) {
+		t.Fatalf("maxOutputTokens = %v, want native default 65535", got)
+	}
+	thinkingConfig, ok := generationConfig["thinkingConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("thinkingConfig missing or invalid: %v", generationConfig["thinkingConfig"])
+	}
+	if got := thinkingConfig["includeThoughts"]; got != true {
+		t.Fatalf("includeThoughts = %v, want true", got)
+	}
+	if got := thinkingConfig["thinkingBudget"]; got != float64(1024) {
+		t.Fatalf("thinkingBudget = %v, want native default 1024", got)
+	}
+}
+
+func TestAntigravityBuildRequest_PreservesExplicitGenerationConfig(t *testing.T) {
+	body := buildRequestBodyFromRawPayload(t, "gemini-3.1-pro-preview", []byte(`{
+		"request": {
+			"contents": [
+				{
+					"role": "user",
+					"parts": [{"text": "hello"}]
+				}
+			],
+			"generationConfig": {
+				"maxOutputTokens": 4096,
+				"thinkingConfig": {
+					"includeThoughts": false,
+					"thinkingBudget": 0
+				}
+			}
+		}
+	}`))
+
+	request, ok := body["request"].(map[string]any)
+	if !ok {
+		t.Fatalf("request missing or invalid: %v", body["request"])
+	}
+	generationConfig, ok := request["generationConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("generationConfig missing or invalid: %v", request["generationConfig"])
+	}
+	if got := generationConfig["maxOutputTokens"]; got != float64(4096) {
+		t.Fatalf("maxOutputTokens = %v, want explicit 4096", got)
+	}
+	thinkingConfig, ok := generationConfig["thinkingConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("thinkingConfig missing or invalid: %v", generationConfig["thinkingConfig"])
+	}
+	if got := thinkingConfig["includeThoughts"]; got != false {
+		t.Fatalf("includeThoughts = %v, want explicit false", got)
+	}
+	if got := thinkingConfig["thinkingBudget"]; got != float64(0) {
+		t.Fatalf("thinkingBudget = %v, want explicit 0", got)
+	}
+}
+
 func TestAntigravityBuildRequest_PreservesIndependentWebSearchRequestType(t *testing.T) {
 	body := buildRequestBodyFromRawPayload(t, "gemini-3.1-flash-lite", []byte(`{
 		"requestType": "web_search",
