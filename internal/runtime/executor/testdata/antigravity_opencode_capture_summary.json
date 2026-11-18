@@ -1,0 +1,140 @@
+[
+  {
+    "client": "opencode-chat",
+    "cases": {
+      "baseline": {
+        "header_names": [
+          "accept-encoding",
+          "authorization",
+          "content-length",
+          "content-type",
+          "host",
+          "user-agent"
+        ],
+        "inbound_header_count": 10,
+        "tool_names": [
+          "apply_patch",
+          "bash",
+          "glob",
+          "grep",
+          "read",
+          "skill",
+          "task",
+          "todowrite",
+          "webfetch"
+        ],
+        "generation_config": {
+          "thinkingConfig": {
+            "thinkingLevel": "medium",
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 8192
+        },
+        "system_chars": 10328,
+        "request_id_parts": 2,
+        "requests_sha256": "cfe930fa50cc4b8c46bb5fd088a4ee2fc24e695992e5647121735f13167dbd7f"
+      },
+      "final": {
+        "header_names": [
+          "accept-encoding",
+          "authorization",
+          "content-length",
+          "content-type",
+          "host",
+          "user-agent"
+        ],
+        "inbound_header_count": 10,
+        "tool_names": [
+          "apply_patch",
+          "bash",
+          "glob",
+          "grep",
+          "read",
+          "skill",
+          "task",
+          "todowrite",
+          "webfetch"
+        ],
+        "generation_config": {
+          "thinkingConfig": {
+            "thinkingLevel": "medium",
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 8192
+        },
+        "system_chars": 6030,
+        "request_id_parts": 2,
+        "requests_sha256": "91206edb8d4a8295b32c4009342f99152bbea17f6df56d92f2e829076a65c968"
+      }
+    }
+  },
+  {
+    "client": "opencode-responses",
+    "cases": {
+      "baseline": {
+        "header_names": [
+          "accept-encoding",
+          "authorization",
+          "content-length",
+          "content-type",
+          "host",
+          "user-agent"
+        ],
+        "inbound_header_count": 10,
+        "tool_names": [
+          "apply_patch",
+          "bash",
+          "glob",
+          "grep",
+          "read",
+          "skill",
+          "task",
+          "todowrite",
+          "webfetch"
+        ],
+        "generation_config": {
+          "maxOutputTokens": 8192,
+          "thinkingConfig": {
+            "thinkingLevel": "medium",
+            "includeThoughts": true
+          }
+        },
+        "system_chars": 10333,
+        "request_id_parts": 2,
+        "requests_sha256": "ec793fdbb0062fa5c234ce8015cf0b3bf49dfafbf8071559d45d51c5e432cd21"
+      },
+      "final": {
+        "header_names": [
+          "accept-encoding",
+          "authorization",
+          "content-length",
+          "content-type",
+          "host",
+          "user-agent"
+        ],
+        "inbound_header_count": 10,
+        "tool_names": [
+          "apply_patch",
+          "bash",
+          "glob",
+          "grep",
+          "read",
+          "skill",
+          "task",
+          "todowrite",
+          "webfetch"
+        ],
+        "generation_config": {
+          "maxOutputTokens": 8192,
+          "thinkingConfig": {
+            "thinkingLevel": "medium",
+            "includeThoughts": true
+          }
+        },
+        "system_chars": 6035,
+        "request_id_parts": 2,
+        "requests_sha256": "3afd1a8336d714af55b5a8f9d8ecc7731de2fd2c7ba21c3a9f1ef8778769e3b1"
+      }
+    }
+  }
+]
