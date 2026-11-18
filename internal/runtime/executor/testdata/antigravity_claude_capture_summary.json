@@ -1,0 +1,101 @@
+[
+  {
+    "client": "claude",
+    "cases": {
+      "baseline": {
+        "header_names": [
+          "accept-encoding",
+          "authorization",
+          "content-length",
+          "content-type",
+          "host",
+          "user-agent"
+        ],
+        "inbound_header_count": 21,
+        "tool_names": [
+          "Agent",
+          "Bash",
+          "CronCreate",
+          "CronDelete",
+          "CronList",
+          "Edit",
+          "EnterWorktree",
+          "ExitWorktree",
+          "ListAgents",
+          "NotebookEdit",
+          "Read",
+          "ReportFindings",
+          "ScheduleWakeup",
+          "SendMessage",
+          "Skill",
+          "TaskCreate",
+          "TaskGet",
+          "TaskList",
+          "TaskStop",
+          "TaskUpdate",
+          "WebFetch",
+          "WebSearch",
+          "Workflow",
+          "Write"
+        ],
+        "generation_config": {
+          "thinkingConfig": {
+            "thinkingLevel": "high",
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 32000
+        },
+        "system_chars": 26726,
+        "request_id_parts": 2,
+        "requests_sha256": "4ea43bc8f5717b8583950c33a4690b1fd516385f5f26532e7a5d855115a4be9b"
+      },
+      "final-v2": {
+        "header_names": [
+          "accept-encoding",
+          "authorization",
+          "content-length",
+          "content-type",
+          "host",
+          "user-agent"
+        ],
+        "inbound_header_count": 21,
+        "tool_names": [
+          "Agent",
+          "Bash",
+          "CronCreate",
+          "CronDelete",
+          "CronList",
+          "Edit",
+          "EnterWorktree",
+          "ExitWorktree",
+          "ListAgents",
+          "NotebookEdit",
+          "Read",
+          "ReportFindings",
+          "ScheduleWakeup",
+          "SendMessage",
+          "Skill",
+          "TaskCreate",
+          "TaskGet",
+          "TaskList",
+          "TaskStop",
+          "TaskUpdate",
+          "WebFetch",
+          "WebSearch",
+          "Workflow",
+          "Write"
+        ],
+        "generation_config": {
+          "thinkingConfig": {
+            "thinkingLevel": "high",
+            "includeThoughts": true
+          },
+          "maxOutputTokens": 32000
+        },
+        "system_chars": 13134,
+        "request_id_parts": 2,
+        "requests_sha256": "0e97c2c205d04c6fcef2d78f01ca0112dbb34c7ab5c1eda45993411528001c8d"
+      }
+    }
+  }
+]
