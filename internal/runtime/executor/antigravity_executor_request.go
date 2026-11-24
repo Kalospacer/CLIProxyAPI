@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net/http"
 	"net/url"
@@ -15,11 +16,14 @@ import (
 
 	"github.com/MoeForge/moego/ojson"
 	"github.com/google/uuid"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/misc"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/session"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -38,7 +42,45 @@ func (e *AntigravityExecutor) buildRequest(ctx context.Context, auth *cliproxyau
 	return httpReq, err
 }
 
+// resolveLifecycleSessionKey 统一解析 Antigravity 生命周期使用的可信会话 UUID。
+// 依次复用既有 ProviderSessionUUID、路由层 CanonicalSessionIDMetadataKey 以及同包既有客户端会话提取
+// （覆盖 Codex Session_id / prompt_cache_key、Claude Code 等显式会话），并结合可信调用方作用域隔离。
+func (e *AntigravityExecutor) resolveLifecycleSessionKey(ctx context.Context, opts cliproxyexecutor.Options, req cliproxyexecutor.Request) string {
+	if existing := helps.ProviderSessionUUID("antigravity", opts.Metadata, req.Metadata); existing != "" {
+		return existing
+	}
+	sessionRaw := ""
+	for _, meta := range []map[string]any{opts.Metadata, req.Metadata} {
+		if meta == nil {
+			continue
+		}
+		if v, ok := meta[cliproxyexecutor.CanonicalSessionIDMetadataKey].(string); ok && strings.TrimSpace(v) != "" {
+			sessionRaw = "canonical:" + strings.TrimSpace(v)
+			break
+		}
+	}
+	if sessionRaw == "" {
+		sessionRaw = strings.TrimSpace(antigravityReasoningReplayClientSessionKey(ctx, req, opts))
+	}
+	if sessionRaw == "" {
+		return ""
+	}
+	callerScope := metadataString(opts.Metadata, cliproxyexecutor.CallerScopeMetadataKey)
+	if callerScope == "" {
+		callerScope = metadataString(req.Metadata, cliproxyexecutor.CallerScopeMetadataKey)
+	}
+	if callerScope == "" {
+		callerScope = session.CallerScope(helps.APIKeyFromContext(ctx))
+	}
+	identity := strings.Join([]string{"cli-proxy-api", "antigravity", "lifecycle-session", callerScope, sessionRaw}, "\x00")
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(identity)).String()
+}
+
 func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, doc *ojson.Doc, stream bool, alt, baseURL string, conversationIDs ...string) (*http.Request, []byte, error) {
+	return e.buildRequestDocWithLifecycle(ctx, auth, token, modelName, doc, stream, alt, baseURL, nil, conversationIDs...)
+}
+
+func (e *AntigravityExecutor) buildRequestDocWithLifecycle(ctx context.Context, auth *cliproxyauth.Auth, token, modelName string, doc *ojson.Doc, stream bool, alt, baseURL string, lifecycle *cache.AntigravityLifecycleState, conversationIDs ...string) (*http.Request, []byte, error) {
 	if token == "" {
 		return nil, nil, statusErr{code: http.StatusUnauthorized, msg: "missing access token"}
 	}
@@ -74,6 +116,38 @@ func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliprox
 		return nil, nil, errProject
 	}
 	geminiToAntigravityDoc(doc, modelName, projectID, conversationIDs...)
+	if lifecycle != nil {
+		reqTypeNow := strings.TrimSpace(doc.Get("requestType").String())
+		if !strings.Contains(modelName, "image") && reqTypeNow != "web_search" {
+			_ = doc.Set("requestId", lifecycle.RequestID)
+			if lifecycle.SessionID != "" {
+				_ = doc.Set("request.sessionId", lifecycle.SessionID)
+			} else {
+				_ = doc.Delete("request.sessionId")
+			}
+			// 仅写入已核实的最小轨迹标签，不编造不确定步号。
+			_ = doc.Delete("request.labels")
+			if lifecycle.HasRequestOrdinal && lifecycle.TrajectoryID != "" {
+				_ = doc.Set("request.labels.request_id", fmt.Sprintf("%s-%d", lifecycle.TrajectoryID, lifecycle.RequestOrdinal))
+			}
+			if lifecycle.CascadeID != "" {
+				_ = doc.Set("request.labels.cascade_id", lifecycle.CascadeID)
+				_ = doc.Set("request.labels.root_cascade_id", lifecycle.CascadeID)
+			}
+			if lifecycle.TrajectoryID != "" {
+				_ = doc.Set("request.labels.trajectory_id", lifecycle.TrajectoryID)
+			}
+			if lifecycle.HasLastStepIndex {
+				_ = doc.Set("request.labels.last_step_index", strconv.FormatUint(lifecycle.LastStepIndex, 10))
+			}
+			if lifecycle.LastExecutionID != "" {
+				_ = doc.Set("request.labels.last_execution_id", lifecycle.LastExecutionID)
+			}
+			_ = doc.Set("request.labels.used_claude", strconv.FormatBool(lifecycle.UsedClaude))
+			_ = doc.Set("request.labels.used_claude_conservative", strconv.FormatBool(lifecycle.UsedClaudeConservative))
+			_ = doc.Set("request.labels.used_non_gemini_model", strconv.FormatBool(lifecycle.UsedNonGeminiModel))
+		}
+	}
 	promptStructuredOutput := helps.PrepareAntigravityClaudeStructuredOutputDoc(modelName, doc)
 
 	// Cap maxOutputTokens to model's max_completion_tokens from registry
@@ -98,6 +172,24 @@ func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliprox
 		_ = doc.Delete("request.generationConfig.maxOutputTokens")
 	}
 	applyAntigravityDefaultGenerationConfigDoc(doc, modelName)
+	if levelRes := doc.Get("request.generationConfig.thinkingConfig.thinkingLevel"); levelRes.Exists() && levelRes.Type == ojson.String {
+		switch strings.ToLower(strings.TrimSpace(levelRes.String())) {
+		case "minimal":
+			_ = doc.Set("request.generationConfig.thinkingConfig.thinkingLevel", "MINIMAL")
+		case "low":
+			_ = doc.Set("request.generationConfig.thinkingConfig.thinkingLevel", "LOW")
+		case "medium":
+			_ = doc.Set("request.generationConfig.thinkingConfig.thinkingLevel", "MEDIUM")
+		case "high":
+			_ = doc.Set("request.generationConfig.thinkingConfig.thinkingLevel", "HIGH")
+		case "xhigh", "extra_high", "extra-high":
+			_ = doc.Set("request.generationConfig.thinkingConfig.thinkingLevel", "EXTRA_HIGH")
+		case "max":
+			_ = doc.Set("request.generationConfig.thinkingConfig.thinkingLevel", "MAX")
+		case "none":
+			_ = doc.Set("request.generationConfig.thinkingConfig.thinkingLevel", "NONE")
+		}
+	}
 	helps.NormalizeAntigravityAgentRequestDoc(doc)
 
 	applyAntigravityNativeSignatureReplayIfNeededDoc(modelName, doc)
@@ -107,6 +199,9 @@ func (e *AntigravityExecutor) buildRequestDoc(ctx context.Context, auth *cliprox
 		bodyReader io.Reader = bytes.NewReader(finalPayload)
 		payloadLog []byte
 	)
+	if stream {
+		bodyReader = struct{ io.Reader }{bytes.NewReader(finalPayload)}
+	}
 	if e.cfg != nil && e.cfg.RequestLog {
 		payloadLog = append([]byte(nil), finalPayload...)
 	}
@@ -797,7 +892,13 @@ func geminiToAntigravityDoc(doc *ojson.Doc, modelName string, projectID string, 
 			conversationID = strings.TrimSpace(conversationIDs[0])
 		}
 		_ = doc.Set("requestId", generateRequestID(reqType, conversationID))
-		_ = doc.Set("request.sessionId", antigravityCCPASessionID)
+		if conversationID != "" {
+			hasher := fnv.New64a()
+			_, _ = hasher.Write([]byte(conversationID))
+			_ = doc.Set("request.sessionId", strconv.FormatInt(int64(hasher.Sum64()), 10))
+		} else {
+			_ = doc.Delete("request.sessionId")
+		}
 	}
 
 	_ = doc.Delete("request.safetySettings")

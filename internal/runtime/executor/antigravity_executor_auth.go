@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MoeForge/moego/json"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/antigravitywire"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -166,7 +167,7 @@ func (e *AntigravityExecutor) refreshTokenSingleFlight(ctx context.Context, auth
 	// Real Antigravity uses Go's default User-Agent for OAuth token refresh
 	httpReq.Header.Set("User-Agent", "Go-http-client/2.0")
 
-	httpClient := newAntigravityHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := e.httpClientForOperation(ctx, auth, 0, antigravitywire.OperationAuthRefresh)
 	httpResp, errDo := helps.WithAntigravityHTTPClientTrace(httpClient, auth, "oauth_refresh").Do(httpReq)
 	if errDo != nil {
 		return nil, errDo
@@ -239,7 +240,7 @@ func (e *AntigravityExecutor) fetchAntigravityProjectID(ctx context.Context, aut
 	// Project discovery is required credential preparation, not a generation request.
 	acquisitionCtx, cancelAcquisition := context.WithTimeout(ctx, antigravityCredentialAcquisitionTimeout)
 	defer cancelAcquisition()
-	httpClient := newAntigravityHTTPClient(acquisitionCtx, e.cfg, auth, 0)
+	httpClient := e.httpClientForOperation(acquisitionCtx, auth, 0, antigravitywire.OperationProjectDiscovery)
 	tracedClient := helps.WithAntigravityHTTPClientTrace(httpClient, auth, "project_discovery")
 	projectID, errFetch := sdkAuth.FetchAntigravityProjectID(acquisitionCtx, token, tracedClient)
 	if errFetch != nil {

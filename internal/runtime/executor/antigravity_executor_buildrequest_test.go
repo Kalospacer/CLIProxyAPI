@@ -191,12 +191,12 @@ func TestAntigravityBuildRequestUsesNativeCCPASession(t *testing.T) {
 	if !ok {
 		t.Fatalf("request missing or invalid: %v", body["request"])
 	}
-	if got := request["sessionId"]; got != "-3750763034362895579" {
-		t.Fatalf("request.sessionId = %v, want native CCPA session", got)
+	if _, exists := request["sessionId"]; exists {
+		t.Fatalf("request.sessionId = %v, want omitted when no session is provided", request["sessionId"])
 	}
 
 	explicitPayload := []byte(`{"request":{"sessionId":"-987654321","contents":[{"role":"user","parts":[{"text":"hello"}]}]}}`)
-	explicitReq, errExplicit := executor.buildRequest(context.Background(), auth, "token", "gemini-3.1-pro", explicitPayload, false, "", "https://example.com")
+	explicitReq, errExplicit := executor.buildRequest(context.Background(), auth, "token", "gemini-3.1-pro", explicitPayload, false, "", "https://example.com", "session-stable-1")
 	if errExplicit != nil {
 		t.Fatalf("buildRequest explicit error: %v", errExplicit)
 	}
@@ -205,8 +205,8 @@ func TestAntigravityBuildRequestUsesNativeCCPASession(t *testing.T) {
 	if !ok {
 		t.Fatalf("explicit request missing or invalid: %v", explicitBody["request"])
 	}
-	if got := explicitRequest["sessionId"]; got != "-3750763034362895579" {
-		t.Fatalf("explicit request.sessionId = %v, want native CCPA session", got)
+	if got, okStr := explicitRequest["sessionId"].(string); !okStr || got == "" || got == "-3750763034362895579" || got == "-987654321" {
+		t.Fatalf("explicit request.sessionId = %v, want per-session stable FNV-1a64", explicitRequest["sessionId"])
 	}
 }
 
@@ -505,7 +505,7 @@ func TestAntigravityExecutor_Claude55ExplicitThinkingLevelPreserved(t *testing.T
 						}
 					}
 
-					if got := ojson.GetBytes(capturedBody, "request.generationConfig.thinkingConfig.thinkingLevel").String(); got != level {
+					if got := ojson.GetBytes(capturedBody, "request.generationConfig.thinkingConfig.thinkingLevel").String(); got != strings.ToUpper(level) {
 						t.Fatalf("thinkingLevel = %q, want %q; body=%s", got, level, capturedBody)
 					}
 					if budget := ojson.GetBytes(capturedBody, "request.generationConfig.thinkingConfig.thinkingBudget"); budget.Exists() {
@@ -715,9 +715,8 @@ func TestAntigravityRewriteRunsBeforePayloadOverride(t *testing.T) {
 	payload := []byte(`{"request":{"systemInstruction":{"parts":[{"text":"DeepSeek Harness system"}]},"contents":[{"role":"user","parts":[{"text":"first"}]},{"role":"model","parts":[{"functionCall":{"name":"read","args":{"path":"a"}}}]},{"role":"user","parts":[{"functionResponse":{"name":"read","response":{"result":"DeepSeek Harness result"}}}]}],"tools":[{"functionDeclarations":[{"name":"read","description":"DeepSeek Harness description","parameters":{"type":"object","properties":{"file.path":{"type":"string","description":"DeepSeek Harness argument"}}}}]}]}}`)
 	wire := captureAntigravityWireBody(t, cfg, "gemini-3.1-pro-preview", payload)
 	for path, want := range map[string]string{
-		"request.systemInstruction.parts.0.text":                                              "agent framework system",
 		"request.contents.0.parts.0.text":                                                     "DeepSeek Harness injected by payload rule",
-		"request.contents.2.parts.0.functionResponse.response.result":                         "DeepSeek Harness result",
+		"request.contents.4.parts.0.functionResponse.response.result":                         "DeepSeek Harness result",
 		"request.tools.0.functionDeclarations.0.description":                                  "DeepSeek Harness description",
 		`request.tools.0.functionDeclarations.0.parameters.properties.file\.path.description`: "DeepSeek Harness argument",
 	} {
@@ -803,7 +802,7 @@ func TestAntigravityExecuteUsesConversationRequestID(t *testing.T) {
 	if parts[1] != wantConversation {
 		t.Errorf("conversation = %q, want %q", parts[1], wantConversation)
 	}
-	if parts[4] != "0" {
-		t.Errorf("stepIndex = %q, want 0", parts[4])
+	if parts[4] != "1" {
+		t.Errorf("stepIndex = %q, want 1", parts[4])
 	}
 }

@@ -63,7 +63,7 @@ func TestAntigravityFallbackVersionMeetsBackendFloor(t *testing.T) {
 }
 
 func TestAntigravityUserAgentUsesCLIForm(t *testing.T) {
-	want := "antigravity/cli/1.5.10 (aidev_client; os_type=linux; arch=amd64; cl=1023297289)"
+	want := "antigravity/cli/1.5.13 (aidev_client; os_type=linux; arch=amd64; cl=1025641825; auth_method=consumer)"
 	if got := AntigravityUserAgent(); got != want {
 		t.Fatalf("AntigravityUserAgent() = %q, want %q", got, want)
 	}
@@ -96,7 +96,7 @@ func TestAntigravityLoadCodeAssistUserAgentUsesShortUA(t *testing.T) {
 	restore := overrideAntigravityVersionCacheForTest(t, "2.2.1", time.Now().Add(time.Hour))
 	defer restore()
 
-	want := "antigravity/cli/1.5.10 (aidev_client; os_type=linux; arch=amd64; cl=1023297289)"
+	want := "antigravity/cli/1.5.13 (aidev_client; os_type=linux; arch=amd64; cl=1025641825; auth_method=consumer)"
 	if got := AntigravityLoadCodeAssistUserAgent(""); got != want {
 		t.Fatalf("AntigravityLoadCodeAssistUserAgent() = %q, want %q", got, want)
 	}
@@ -109,7 +109,7 @@ func TestAntigravityOnboardUserUserAgentUsesLongUA(t *testing.T) {
 	restore := overrideAntigravityVersionCacheForTest(t, "2.2.1", time.Now().Add(time.Hour))
 	defer restore()
 
-	want := "antigravity/cli/1.5.10 (aidev_client; os_type=linux; arch=amd64; cl=1023297289) google-api-nodejs-client/10.3.0"
+	want := "antigravity/cli/1.5.13 (aidev_client; os_type=linux; arch=amd64; cl=1025641825; auth_method=consumer)"
 	if got := AntigravityOnboardUserUserAgent(""); got != want {
 		t.Fatalf("AntigravityOnboardUserUserAgent() = %q, want %q", got, want)
 	}

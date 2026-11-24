@@ -13,11 +13,11 @@ import (
 
 	"github.com/MoeForge/moego/json"
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/antigravitywire"
 	xaiauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/xai"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
 	log "github.com/sirupsen/logrus"
@@ -216,7 +216,6 @@ func (h *Handler) APICall(c *gin.Context) {
 		Timeout: defaultAPICallTimeout,
 	}
 	httpClient.Transport = h.apiCallTransport(auth, requestProxyURL)
-	httpClient = util.WrapGoogleRewriteClient(httpClient)
 
 	resp, errDo := httpClient.Do(req)
 	if errDo != nil {
@@ -568,12 +567,23 @@ func (h *Handler) refreshAntigravityOAuthAccessToken(ctx context.Context, auth *
 		return "", errReq
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Go-http-client/2.0")
 
-	httpClient := &http.Client{
-		Timeout: defaultAPICallTimeout,
+	var baseTransport *http.Transport
+	if tr, ok := h.apiCallTransport(auth, requestProxyURL).(*http.Transport); ok {
+		baseTransport = tr
 	}
-	httpClient.Transport = h.apiCallTransport(auth, requestProxyURL)
-	httpClient = util.WrapGoogleRewriteClient(httpClient)
+	refreshProxyURL := strings.TrimSpace(requestProxyURL)
+	if refreshProxyURL == "" && auth != nil {
+		refreshProxyURL = strings.TrimSpace(auth.ProxyURL)
+	}
+	if refreshProxyURL == "" && h.cfg != nil {
+		refreshProxyURL = strings.TrimSpace(h.cfg.ProxyURL)
+	}
+	httpClient, errWire := antigravitywire.NewClient(antigravitywire.OperationAuthRefresh, refreshProxyURL, baseTransport, defaultAPICallTimeout)
+	if errWire != nil {
+		return "", errWire
+	}
 	resp, errDo := httpClient.Do(req)
 	if errDo != nil {
 		return "", errDo

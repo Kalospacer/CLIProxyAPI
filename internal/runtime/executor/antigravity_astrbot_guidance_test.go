@@ -27,7 +27,7 @@ func TestAntigravityAstrBotCapturedGuidancePreservesToolsAndSafety(t *testing.T)
 	before := ojson.NewDoc(raw)
 	wire := captureAntigravityWireBody(t, cfg, "gemini-3.1-pro-preview", raw)
 	output := ojson.NewDoc(wire)
-	system := output.Get("request.systemInstruction.parts.0.text").String()
+	system := output.Get("request.contents.0.parts.0.text").String()
 	cases := []struct{ source, replacement string }{
 		{"You are running in Safe Mode.", "Apply the following safety constraints."},
 		{"You have access to the host local environment and can execute shell commands and Python code.", "Use the available shell and Python tools to work in the local environment."},
@@ -46,10 +46,15 @@ func TestAntigravityAstrBotCapturedGuidancePreservesToolsAndSafety(t *testing.T)
 			t.Errorf("measured guidance not rewritten: %q", tc.source)
 		}
 	}
-	for _, path := range []string{"request.tools", "request.contents", "request.generationConfig"} {
+	for _, path := range []string{"request.tools", "request.generationConfig"} {
 		if !reflect.DeepEqual(before.Get(path).Value(), output.Get(path).Value()) {
 			t.Errorf("guidance rewrite changed %s", path)
 		}
+	}
+	beforeContents, _ := before.Get("request.contents").Value().([]any)
+	afterContents, _ := output.Get("request.contents").Value().([]any)
+	if len(afterContents) != len(beforeContents)+2 || !reflect.DeepEqual(beforeContents, afterContents[2:]) {
+		t.Errorf("guidance rewrite changed original request.contents after bridge turns")
 	}
 	for _, preserved := range []string{
 		"Avoid sexual, violent, extremist, hateful, illegal, or harmful content.",

@@ -90,7 +90,7 @@ func TestAntigravityHomeModelThinkingLevelRemainsLevel(t *testing.T) {
 	}
 
 	upstreamBody := <-requestBodies
-	if got := ojson.GetBytes(upstreamBody, "request.generationConfig.thinkingConfig.thinkingLevel").String(); got != "medium" {
+	if got := ojson.GetBytes(upstreamBody, "request.generationConfig.thinkingConfig.thinkingLevel").String(); got != "MEDIUM" {
 		t.Fatalf("thinkingLevel = %q, want medium; body=%s", got, upstreamBody)
 	}
 	if budget := ojson.GetBytes(upstreamBody, "request.generationConfig.thinkingConfig.thinkingBudget"); budget.Exists() {

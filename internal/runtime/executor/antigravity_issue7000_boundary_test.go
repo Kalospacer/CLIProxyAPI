@@ -71,10 +71,10 @@ func TestIssue7000AntigravityAliasesPreserveOtherFieldsAndToolChoice(t *testing.
 						t.Fatal(errMarshal)
 					}
 					request := ojson.GetBytes(encoded, "request")
-					assertIssue7000PromptSchema(t, request.Get(systemKey), issue7000LiteralSchema)
+					assertIssue7000PromptSchema(t, request.Get("contents.0"), issue7000LiteralSchema)
 					for path, want := range map[string]string{
 						"generationConfig.temperature": "0.25", "generation_config.stopSequences.0": "STOP",
-						systemKey + ".parts.0.text": "keep system", "contents.0.parts.0.text": "keep history",
+						"contents.0.parts.0.text": "keep system", "contents.2.parts.0.text": "keep history",
 						"tools.0.functionDeclarations.0.name": "lookup",
 					} {
 						if got := request.Get(path).String(); got != want {
@@ -136,7 +136,7 @@ func TestIssue7000AntigravityModelAndPlainRequestBoundaries(t *testing.T) {
 				t.Errorf("native schema presence = %t, conversion = %t", got, tc.convert)
 			}
 			if tc.convert {
-				assertIssue7000PromptSchema(t, ojson.GetBytes(encoded, "request.systemInstruction"), `{"type":"object","properties":{"title":{"type":"string"}}}`)
+				assertIssue7000PromptSchema(t, ojson.GetBytes(encoded, "request.contents.0"), `{"type":"object","properties":{"title":{"type":"string"}}}`)
 			}
 		})
 	}
@@ -240,8 +240,12 @@ func TestIssue7000AntigravityExecutionAndFinalPayloadRules(t *testing.T) {
 					}
 					switch rules {
 					case "none":
-						assertIssue7000PromptSchema(t, request.Get("systemInstruction"), issue7000LiteralSchema)
-						if !strings.Contains(request.Get("systemInstruction.parts.0.text").String(), "a\u034fnthropic") {
+						systemNode := request.Get("contents.0")
+						if operation == "count" {
+							systemNode = request.Get("systemInstruction")
+						}
+						assertIssue7000PromptSchema(t, systemNode, issue7000LiteralSchema)
+						if !strings.Contains(systemNode.Get("parts.0.text").String(), "a\u034fnthropic") {
 							t.Errorf("original system instruction was lost or not obfuscated: %s", body)
 						}
 						for _, key := range []string{"responseSchema", "responseMimeType"} {
@@ -259,7 +263,11 @@ func TestIssue7000AntigravityExecutionAndFinalPayloadRules(t *testing.T) {
 							t.Errorf("built-in logic changed final override: %s", body)
 						}
 					case "filter":
-						if request.Get("systemInstruction").Exists() || request.Get("toolConfig").Exists() || request.Get("contents.#").Int() != 2 {
+						wantLen := int64(4)
+						if operation == "count" {
+							wantLen = 2
+						}
+						if request.Get("systemInstruction").Exists() || request.Get("toolConfig").Exists() || request.Get("contents.#").Int() != wantLen {
 							t.Errorf("filter was undone or applied more than once: %s", body)
 						}
 					}

@@ -287,7 +287,7 @@ func TestAntigravityStreamObfuscatesSensitiveSystemInstruction(t *testing.T) {
 	}
 
 	body := <-captured
-	got := ojson.GetBytes(body, "request.systemInstruction.parts.0.text").String()
+	got := ojson.GetBytes(body, "request.contents.0.parts.0.text").String()
 	want := "You are H\u034Fermes Agent, an intelligent AI assistant created by N\u034Fous R\u034Fesearch."
 	if got != want {
 		t.Fatalf("system instruction = %q, want %q; body=%s", got, want, body)
@@ -350,7 +350,7 @@ func TestAntigravityExecuteObfuscatesCodexIdentityWithCGJ(t *testing.T) {
 				t.Fatalf("Execute() error = %v", errExec)
 			}
 			body := <-captured
-			got := ojson.GetBytes(body, "request.systemInstruction.parts.0.text").String()
+			got := ojson.GetBytes(body, "request.contents.0.parts.0.text").String()
 			want := "You are C\u034Fodex, an agent based on G\u034FPT-5."
 			if got != want {
 				t.Fatalf("systemInstruction = %q, want %q", got, want)
@@ -474,13 +474,13 @@ func TestAntigravitySensitiveWordsReplaceCoversUserAndCountTokens(t *testing.T) 
 	}
 	execBody := <-captured
 	wantInstruction := "You are a helpful coding assistant. Keep extra instructions intact."
-	if got := ojson.GetBytes(execBody, "request.systemInstruction.parts.0.text").String(); got != wantInstruction {
-		t.Fatalf("Execute systemInstruction = %q, want %q", got, wantInstruction)
+	if got := ojson.GetBytes(execBody, "request.contents.0.parts.0.text").String(); got != wantInstruction {
+		t.Fatalf("Execute bridged systemInstruction = %q, want %q", got, wantInstruction)
 	}
 	if gotToolDesc := ojson.GetBytes(execBody, "request.tools.0.functionDeclarations.0.description").String(); gotToolDesc != "Codex diagnostic tool" {
 		t.Fatalf("tool description = %q, want unchanged", gotToolDesc)
 	}
-	if gotUser := ojson.GetBytes(execBody, "request.contents.0.parts.0.text").String(); gotUser != "You are a helpful coding assistant." {
+	if gotUser := ojson.GetBytes(execBody, "request.contents.2.parts.0.text").String(); gotUser != "You are a helpful coding assistant." {
 		t.Fatalf("user content = %q, want replacement", gotUser)
 	}
 
@@ -978,7 +978,7 @@ func TestAntigravityRequestPathsDoNotFallbackEndpoints(t *testing.T) {
 		model    string
 		wantPath string
 	}{
-		{name: "generate non-stream", kind: "execute", model: "gemini-3.6-flash-high", wantPath: antigravityGeneratePath},
+		{name: "generate non-stream", kind: "execute", model: "gemini-3.6-flash-high", wantPath: antigravityStreamPath},
 		{name: "Claude non-stream", kind: "execute", model: "claude-sonnet-4-6", wantPath: antigravityStreamPath},
 		{name: "generate stream", kind: "stream", model: "gemini-3.6-flash-high", wantPath: antigravityStreamPath},
 		{name: "count tokens", kind: "count", model: "gemini-3.6-flash-high", wantPath: antigravityCountTokensPath},

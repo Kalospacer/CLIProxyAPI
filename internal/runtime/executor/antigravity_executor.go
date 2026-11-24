@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/MoeForge/moego/json"
 	"github.com/MoeForge/moego/ojson"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/antigravitywire"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
@@ -26,7 +28,6 @@ import (
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/httptransport"
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	log "github.com/sirupsen/logrus"
 )
@@ -267,6 +268,7 @@ type antigravityTransportKey struct {
 	credential          string
 	proxy               string
 	base                *http.Transport
+	op                  antigravitywire.Operation
 	shortMode           bool
 	idleConnTimeout     time.Duration
 	maxIdleConnsPerHost int
@@ -279,25 +281,30 @@ func defaultAntigravityBaseTransport() *http.Transport {
 	return &http.Transport{}
 }
 
-func cloneTransportWithHTTP11(base *http.Transport, cfgs ...*config.Config) *http.Transport {
-	if base == nil {
+func (k antigravityTransportKey) buildTransport(base *http.Transport, cfgs ...*config.Config) *http.Transport {
+	if base == nil && strings.TrimSpace(k.proxy) == "" {
 		return nil
 	}
-
-	clone := base.Clone()
-	clone.ForceAttemptHTTP2 = false
-	// Wipe TLSNextProto to prevent implicit HTTP/2 upgrade.
-	clone.TLSNextProto = make(map[string]func(authority string, c *tls.Conn) http.RoundTripper)
+	wireClient, errWire := antigravitywire.NewClient(k.op, k.proxy, base, 0)
+	if errWire != nil || wireClient == nil {
+		return nil
+	}
+	clone, ok := wireClient.Transport.(*http.Transport)
+	if !ok || clone == nil {
+		return nil
+	}
 	if clone.TLSClientConfig == nil {
 		clone.TLSClientConfig = &tls.Config{}
 	} else {
 		clone.TLSClientConfig = clone.TLSClientConfig.Clone()
 	}
-	// Native Antigravity sends no ALPN extension. With HTTP/2 disabled above,
-	// an empty NextProtos keeps the wire shape aligned while using HTTP/1.1.
 	clone.TLSClientConfig.NextProtos = nil
 	applyAntigravityPoolLimits(clone, cfgs...)
 	return clone
+}
+
+func cloneTransportWithHTTP11(base *http.Transport, cfgs ...*config.Config) *http.Transport {
+	return (antigravityTransportKey{op: antigravitywire.OperationInfer}).buildTransport(base, cfgs...)
 }
 
 // applyAntigravityPoolLimits configures connection pool parameters for Antigravity.
@@ -358,6 +365,24 @@ func applyAntigravityPoolLimits(transport *http.Transport, cfgs ...*config.Confi
 // antigravityHTTP11Transport returns the HTTP/1.1 pool shared by every request that
 // uses the same credential and the same base transport. The base is either the
 // process default or a transport provided through the request context.
+func (k antigravityTransportKey) cachedTransport(base *http.Transport, cfgs ...*config.Config) *http.Transport {
+	transport, errGet := antigravityTransports.Get(k, func() (*http.Transport, error) {
+		tr := k.buildTransport(base, cfgs...)
+		if tr == nil {
+			return nil, fmt.Errorf("antigravity executor: build wire transport failed")
+		}
+		return tr, nil
+	})
+	if errGet != nil {
+		if k.proxy != "" {
+			return nil
+		}
+		log.Debugf("antigravity executor: cache HTTP/1.1 transport failed: %v", errGet)
+		return k.buildTransport(base, cfgs...)
+	}
+	return transport
+}
+
 func antigravityHTTP11Transport(auth *cliproxyauth.Auth, base *http.Transport, cfgs ...*config.Config) *http.Transport {
 	if base == nil {
 		return nil
@@ -367,30 +392,17 @@ func antigravityHTTP11Transport(auth *cliproxyauth.Auth, base *http.Transport, c
 		cfg = cfgs[0]
 	}
 	settings := resolveAntigravityPoolSettings(cfg)
-	key := antigravityTransportKey{
+	return (antigravityTransportKey{
 		credential:          antigravityTransportScope(auth),
 		base:                base,
+		op:                  antigravitywire.OperationInfer,
 		shortMode:           settings.shortMode,
 		idleConnTimeout:     settings.idleConnTimeout,
 		maxIdleConnsPerHost: settings.maxIdleConnsPerHost,
-	}
-	transport, errGet := antigravityTransports.Get(key, func() (*http.Transport, error) {
-		return cloneTransportWithHTTP11(base, cfgs...), nil
-	})
-	if errGet != nil {
-		// Defensive only: the builder above cannot fail. Never return nil here, because a
-		// nil Transport makes http.Client fall back to http.DefaultTransport, which
-		// advertises h2 over ALPN and would break the Antigravity wire fingerprint.
-		log.Debugf("antigravity executor: cache HTTP/1.1 transport failed: %v", errGet)
-		return cloneTransportWithHTTP11(base, cfgs...)
-	}
-	return transport
+	}).cachedTransport(base, cfgs...)
 }
 
-// antigravityProxiedHTTP11Transport returns the credential-scoped HTTP/1.1 pool for
-// one proxy setting, or nil when the proxy setting cannot be turned into a
-// transport. Keying on the normalized proxy string rather than on a prebuilt
-// transport keeps one pool per credential and proxy instead of one per request.
+// antigravityProxiedHTTP11Transport 返回指定代理与凭据的 HTTP/1.1 连接池；代理无效时返回 nil。
 func antigravityProxiedHTTP11Transport(auth *cliproxyauth.Auth, proxyURL string, cfgs ...*config.Config) *http.Transport {
 	proxyURL = strings.TrimSpace(proxyURL)
 	if proxyURL == "" {
@@ -401,29 +413,14 @@ func antigravityProxiedHTTP11Transport(auth *cliproxyauth.Auth, proxyURL string,
 		cfg = cfgs[0]
 	}
 	settings := resolveAntigravityPoolSettings(cfg)
-	key := antigravityTransportKey{
+	return (antigravityTransportKey{
 		credential:          antigravityTransportScope(auth),
 		proxy:               proxyURL,
+		op:                  antigravitywire.OperationInfer,
 		shortMode:           settings.shortMode,
 		idleConnTimeout:     settings.idleConnTimeout,
 		maxIdleConnsPerHost: settings.maxIdleConnsPerHost,
-	}
-	transport, errGet := antigravityTransports.Get(key, func() (*http.Transport, error) {
-		base, _, errBuild := proxyutil.BuildHTTPTransport(proxyURL)
-		if errBuild != nil {
-			return nil, errBuild
-		}
-		if base == nil {
-			return nil, fmt.Errorf("antigravity executor: proxy setting produced no transport")
-		}
-		return cloneTransportWithHTTP11(base, cfgs...), nil
-	})
-	if errGet != nil {
-		// The caller falls back to NewProxyAwareHTTPClient, which reports the failure
-		// and applies the context transport fallback.
-		return nil
-	}
-	return transport
+	}).cachedTransport(antigravityBaseTransport, cfgs...)
 }
 
 // antigravityTransportScope returns the connection-pool scope for one credential.
@@ -477,43 +474,78 @@ func antigravityCredentialScope(prefix, secret string) string {
 // negotiates TLS 1.3 without advertising an ALPN protocol and therefore never uses h2.
 // The underlying Transport is always shared so keep-alive connections survive across
 // requests instead of forcing a fresh TCP + TLS handshake every time.
-func newAntigravityHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyauth.Auth, timeout time.Duration) (clientOut *http.Client) {
+func newAntigravityHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyauth.Auth, timeout time.Duration) *http.Client {
+	return (&AntigravityExecutor{cfg: cfg}).httpClientForOperation(ctx, auth, timeout, antigravitywire.OperationInfer)
+}
+
+func (e *AntigravityExecutor) httpClientForOperation(ctx context.Context, auth *cliproxyauth.Auth, timeout time.Duration, op antigravitywire.Operation) (clientOut *http.Client) {
+	var cfg *config.Config
+	if e != nil {
+		cfg = e.cfg
+	}
 	defer func() { clientOut = httptransport.Decorate(ctx, clientOut) }()
-	// Native Antigravity reuses one transport across requests. Opt into a
-	// credential-scoped proxy transport only here so other providers keep their
-	// existing lifecycle and different OAuth identities remain isolated.
+	settings := resolveAntigravityPoolSettings(cfg)
 	if proxyURL := antigravityProxyURL(ctx, cfg, auth); proxyURL != "" {
-		if transport := antigravityProxiedHTTP11Transport(auth, proxyURL, cfg); transport != nil {
-			return &http.Client{Transport: util.WrapGoogleRewrite(transport), Timeout: timeout}
+		key := antigravityTransportKey{
+			credential:          antigravityTransportScope(auth),
+			proxy:               proxyURL,
+			op:                  op,
+			shortMode:           settings.shortMode,
+			idleConnTimeout:     settings.idleConnTimeout,
+			maxIdleConnsPerHost: settings.maxIdleConnsPerHost,
 		}
-		// Fall through so NewProxyAwareHTTPClient reports the failure and applies the
-		// context transport fallback, preserving the previous behavior.
+		if transport := key.cachedTransport(antigravityBaseTransport, cfg); transport != nil {
+			return &http.Client{Transport: transport, Timeout: timeout}
+		}
+		// 若未注入测试专用 RoundTripper，显式代理配置非法时直接报错，不静默回退到直连或旧链路。
+		hasCtxRT := ctx != nil
+		if hasCtxRT {
+			rt, ok := ctx.Value("cliproxy.roundtripper").(http.RoundTripper)
+			hasCtxRT = ok && rt != nil
+		}
+		if !hasCtxRT {
+			_, errWire := antigravitywire.NewClient(op, proxyURL, nil, timeout)
+			if errWire == nil {
+				errWire = fmt.Errorf("antigravity executor: invalid proxy configuration")
+			}
+			failDial := func(context.Context, string, string) (net.Conn, error) { return nil, errWire }
+			return &http.Client{
+				Transport: &http.Transport{DialContext: failDial, DialTLSContext: failDial},
+				Timeout:   timeout,
+			}
+		}
 	}
 
 	client := helps.NewProxyAwareHTTPClient(httptransport.WithoutDecorator(ctx), cfg, auth, timeout)
-	// Direct requests share an HTTP/1.1 pool only within the selected credential.
-	// Strip any Google rewrite layer first so the HTTP/1.1 fingerprint handling
-	// below keeps working, then re-wrap the final transport.
-	inner := util.UnwrapGoogleRewrite(client.Transport)
+	inner := client.Transport
 	if inner == nil {
-		client.Transport = util.WrapGoogleRewrite(antigravityHTTP11Transport(auth, antigravityBaseTransport, cfg))
+		client.Transport = (antigravityTransportKey{
+			credential:          antigravityTransportScope(auth),
+			base:                antigravityBaseTransport,
+			op:                  op,
+			shortMode:           settings.shortMode,
+			idleConnTimeout:     settings.idleConnTimeout,
+			maxIdleConnsPerHost: settings.maxIdleConnsPerHost,
+		}).cachedTransport(antigravityBaseTransport, cfg)
 		return client
 	}
 
 	transport, ok := inner.(*http.Transport)
 	if !ok {
-		// A RoundTripper that is not an *http.Transport owns its own protocol behavior.
-		client.Transport = util.WrapGoogleRewrite(inner)
+		client.Transport = inner
 		return client
 	}
 	if transport == nil {
-		// A typed-nil *http.Transport still satisfies the interface nil check in
-		// NewProxyAwareHTTPClient. Leaving it in place would make http.Client fall back
-		// to http.DefaultTransport, which advertises h2 over ALPN and breaks the
-		// Antigravity fingerprint, so substitute the process base transport.
 		transport = antigravityBaseTransport
 	}
-	client.Transport = util.WrapGoogleRewrite(antigravityHTTP11Transport(auth, transport, cfg))
+	client.Transport = (antigravityTransportKey{
+		credential:          antigravityTransportScope(auth),
+		base:                transport,
+		op:                  op,
+		shortMode:           settings.shortMode,
+		idleConnTimeout:     settings.idleConnTimeout,
+		maxIdleConnsPerHost: settings.maxIdleConnsPerHost,
+	}).cachedTransport(transport, cfg)
 	return client
 }
 

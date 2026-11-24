@@ -123,17 +123,17 @@ func AntigravityLatestVersion() string {
 	return antigravityFallbackVersion
 }
 
-// Antigravity CLI 的真实 UA 取值，来自 antigravity-cli 1.5.10 出站请求实测。
-// 注意 auth_method 是认证模式相关字段，OAuth 模式下的取值尚无实测证据，因此不声明。
+// Antigravity CLI 的真实 UA 取值，来自官方 antigravity-cli 1.5.13（Linux/amd64 consumer）隔离出站实测。
 const (
-	antigravityCLIVersion    = "1.5.10"
-	antigravityCLIChangelist = "1023297289"
+	antigravityCLIVersion    = "1.5.13"
+	antigravityCLIChangelist = "1025641825"
 	antigravityCLIPlatform   = "os_type=linux; arch=amd64"
+	antigravityCLIAuthMethod = "auth_method=consumer"
 )
 
 // AntigravityUserAgent returns the User-Agent string used by the Antigravity CLI.
 func AntigravityUserAgent() string {
-	return fmt.Sprintf("antigravity/cli/%s (aidev_client; %s; cl=%s)", antigravityCLIVersion, antigravityCLIPlatform, antigravityCLIChangelist)
+	return fmt.Sprintf("antigravity/cli/%s (aidev_client; %s; cl=%s; %s)", antigravityCLIVersion, antigravityCLIPlatform, antigravityCLIChangelist, antigravityCLIAuthMethod)
 }
 
 func isAntigravityFamilyUserAgent(lower string) bool {
@@ -169,21 +169,9 @@ func AntigravityLoadCodeAssistUserAgent(userAgent string) string {
 	return AntigravityRequestUserAgent(userAgent)
 }
 
-// AntigravityOnboardUserUserAgent returns the long Antigravity control-plane UA
-// used by onboardUser requests.
+// AntigravityOnboardUserUserAgent 返回 onboardUser 请求使用的 Antigravity CLI UA。
 func AntigravityOnboardUserUserAgent(userAgent string) string {
-	userAgent = strings.TrimSpace(userAgent)
-	if userAgent == "" {
-		return AntigravityUserAgent() + " " + AntigravityNodeAPIClientUA
-	}
-	lower := strings.ToLower(userAgent)
-	if !isAntigravityFamilyUserAgent(lower) {
-		return userAgent
-	}
-	if strings.Contains(lower, "google-api-nodejs-client/") {
-		return userAgent
-	}
-	return antigravityBaseUserAgent(userAgent) + " " + AntigravityNodeAPIClientUA
+	return AntigravityRequestUserAgent(userAgent)
 }
 
 // AntigravityVersionFromUserAgent extracts the Antigravity version prefix from
@@ -191,6 +179,17 @@ func AntigravityOnboardUserUserAgent(userAgent string) string {
 func AntigravityVersionFromUserAgent(userAgent string) string {
 	base := antigravityBaseUserAgent(userAgent)
 	lower := strings.ToLower(base)
+	if strings.HasPrefix(lower, "antigravity/cli/") {
+		rest := base[len("antigravity/cli/"):]
+		if idx := strings.IndexAny(rest, " 	"); idx >= 0 {
+			rest = rest[:idx]
+		}
+		rest = strings.TrimSpace(rest)
+		if rest == "" {
+			return antigravityCLIVersion
+		}
+		return rest
+	}
 	if strings.HasPrefix(lower, "antigravity/hub/") {
 		rest := base[len("antigravity/hub/"):]
 		if idx := strings.IndexAny(rest, " 	"); idx >= 0 {

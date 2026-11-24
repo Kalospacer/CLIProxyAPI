@@ -99,7 +99,7 @@ func TestAntigravityNativeEgressUnknownHarnessProtocols(t *testing.T) {
 			wire := captureNativeEgress(t, nil, tc.format, "stream", "gemini-3.1-pro-preview", []byte(tc.body), inbound)
 			assertNativeEgressHeaders(t, wire, inbound)
 			doc := ojson.NewDoc(wire.Body)
-			if doc.Get("request.systemInstruction.role").String() != "user" || !strings.Contains(doc.Get("request.systemInstruction.parts.0.text").String(), "unknown client") {
+			if doc.Get("request.systemInstruction.role").String() != "user" || !strings.Contains(doc.Get("request.contents.0.parts.0.text").String(), "unknown client") {
 				t.Fatalf("system instruction lost: %s", wire.Body)
 			}
 			if doc.Get("request.generationConfig.maxOutputTokens").Int() != 2048 {

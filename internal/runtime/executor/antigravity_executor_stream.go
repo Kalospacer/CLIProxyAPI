@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/MoeForge/moego/ojson"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/antigravitywire"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
@@ -110,7 +112,13 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 	useCredits := cliproxyauth.AntigravityCreditsRequested(ctx) && antigravityCreditsRetryEnabled(e.cfg)
 
 	baseURL := resolveAntigravityRequestBaseURL(auth)
-	httpClient := newAntigravityHTTPClient(ctx, e.cfg, auth, 0)
+	streamOp := antigravitywire.OperationInfer
+	if strings.Contains(strings.ToLower(baseModel), "image") {
+		streamOp = antigravitywire.OperationImage
+	} else if strings.TrimSpace(doc.Get("requestType").String()) == "web_search" {
+		streamOp = antigravitywire.OperationSearch
+	}
+	httpClient := e.httpClientForOperation(ctx, auth, 0, streamOp)
 	httpClient = reporter.TrackHTTPClient(httpClient)
 
 	// Credential retry rounds are owned by the conductor. Perform one upstream
@@ -134,7 +142,33 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 	if replayScope.valid() {
 		replayRequestPayload, _ = antigravityReplayRequestEnvelopeFromDoc(doc)
 	}
-	httpReq, requestPayload, errReq := e.buildRequestDoc(ctx, auth, token, baseModel, doc, true, opts.Alt, baseURL, helps.ProviderSessionUUID("antigravity", opts.Metadata, req.Metadata))
+	sessionKey := e.resolveLifecycleSessionKey(ctx, opts, req)
+	reqType := strings.TrimSpace(doc.Get("requestType").String())
+	if reqType == "" {
+		reqType = "agent"
+	}
+	var lifecycle *cache.AntigravityLifecycleState
+	lifecycleHandedOff := false
+	if reqType != "web_search" && !strings.Contains(strings.ToLower(baseModel), "image") {
+		toolResultCounts := map[string]int{}
+		doc.Get("request.contents").ForEach(func(_, content ojson.Result) bool {
+			content.Get("parts").ForEach(func(_, part ojson.Result) bool {
+				if id := strings.TrimSpace(part.Get("functionResponse.id").String()); id != "" {
+					toolResultCounts[id]++
+				}
+				return true
+			})
+			return true
+		})
+		st := cache.BeginAntigravityLifecycle(ctx, sessionKey, reqType, baseModel, toolResultCounts)
+		lifecycle = &st
+		defer func() {
+			if !lifecycleHandedOff {
+				cache.FinishAntigravityLifecycle(context.WithoutCancel(ctx), *lifecycle, false, nil)
+			}
+		}()
+	}
+	httpReq, requestPayload, errReq := e.buildRequestDocWithLifecycle(ctx, auth, token, baseModel, doc, true, opts.Alt, baseURL, lifecycle, sessionKey)
 	if errReq != nil {
 		err = errReq
 		return nil, err
@@ -213,7 +247,9 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 	replayAccumulator := newAntigravityReasoningReplayAccumulator(replayScope, replayRequestPayload)
 	out := make(chan cliproxyexecutor.StreamChunk)
 	stopDeliverySupport := usage.SupportStreamDelivery(ctx)
+	lifecycleHandedOff = true
 	go func(resp *http.Response) {
+		var emittedToolIDs []string
 		defer func() {
 			if errClose := resp.Body.Close(); errClose != nil {
 				log.Errorf("antigravity executor: close response line error: %v", errClose)
@@ -274,6 +310,17 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 
 			streamUsage.Publish(ctx, reporter)
 			reporter.EnsurePublished(ctx)
+		}()
+		defer func() {
+			if lifecycle == nil {
+				return
+			}
+			succeeded := !translatedErrorStopped &&
+				translatedClaudeErr == nil &&
+				helps.ApplyPatchTranslationError(param) == nil &&
+				(streamErr == nil || (terminalDelivered && errors.Is(streamErr, context.Canceled))) &&
+				(terminalDelivered || ctx.Err() == nil)
+			cache.FinishAntigravityLifecycle(context.WithoutCancel(ctx), *lifecycle, succeeded, emittedToolIDs)
 		}()
 		var pendingFilterPayload []byte
 		var pendingFilterMsg string
@@ -343,6 +390,18 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 				return
 			}
 			emitTranslatedPayload := func(p []byte) bool {
+				if lifecycle != nil {
+					partsNode := ojson.GetBytesNoCopy(p, "response.candidates.0.content.parts")
+					if !partsNode.IsArray() {
+						partsNode = ojson.GetBytesNoCopy(p, "candidates.0.content.parts")
+					}
+					partsNode.ForEach(func(_, part ojson.Result) bool {
+						if id := strings.TrimSpace(part.Get("functionCall.id").String()); id != "" {
+							emittedToolIDs = append(emittedToolIDs, id)
+						}
+						return true
+					})
+				}
 				// Filter usage metadata for all models after block classification
 				// so only the terminal chunk retains client-visible usage statistics.
 				p = helps.JSONPayload(helps.FilterSSEUsageMetadata(append([]byte("data: "), p...)))

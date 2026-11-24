@@ -13,6 +13,8 @@ import (
 
 	"github.com/MoeForge/moego/json"
 	"github.com/MoeForge/moego/ojson"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/antigravitywire"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
@@ -57,13 +59,26 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 		}
 	}
 
-	isClaude := strings.Contains(strings.ToLower(baseModel), "claude")
-	if isClaude || strings.Contains(baseModel, "gemini-3-pro") || strings.Contains(baseModel, "gemini-3.1-flash-image") {
+	isImageModel := strings.Contains(strings.ToLower(baseModel), "image")
+	// 仅当请求体可能触发 web_search（原始 requestType 或工具声明）或图片模型时留在 Execute 翻译判断，
+	// 其余常规文本非流式推理直接走上游 SSE 聚合路径。
+	maybeWebSearch := bytes.Contains(req.Payload, []byte("web_search")) ||
+		bytes.Contains(req.Payload, []byte("google_search")) ||
+		bytes.Contains(req.Payload, []byte("googleSearch")) ||
+		bytes.Contains(opts.OriginalRequest, []byte("web_search")) ||
+		bytes.Contains(opts.OriginalRequest, []byte("google_search")) ||
+		bytes.Contains(opts.OriginalRequest, []byte("googleSearch"))
+	if !isImageModel && !maybeWebSearch {
 		return e.executeClaudeNonStream(ctx, auth, req, opts)
 	}
 
 	reporter := helps.NewExecutorUsageReporter(ctx, e, baseModel, auth)
-	defer reporter.TrackFailure(ctx, &err)
+	delegatedToStreamAgg := false
+	defer func() {
+		if !delegatedToStreamAgg {
+			reporter.TrackFailure(ctx, &err)
+		}
+	}()
 
 	from := opts.SourceFormat
 	responseFormat := cliproxyexecutor.ResponseFormatOrSource(opts)
@@ -85,6 +100,11 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 	originalTranslated, translated, errTranslate := helps.TranslateRequestEnvelopePairWithCodexMultiAgentV2(ctx, opts.Headers, e.cfg, from, to, translationReq, originalPayload, req.Payload)
 	if errTranslate != nil {
 		return resp, errTranslate
+	}
+	isWebSearchReq := strings.TrimSpace(ojson.GetBytesNoCopy(translated, "requestType").String()) == "web_search"
+	if !isImageModel && !isWebSearchReq {
+		delegatedToStreamAgg = true
+		return e.executeClaudeNonStream(ctx, auth, req, opts)
 	}
 	token, updatedAuth, errToken := e.ensureAccessToken(ctx, auth)
 	if errToken != nil {
@@ -110,7 +130,13 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 	useCredits := cliproxyauth.AntigravityCreditsRequested(ctx) && antigravityCreditsRetryEnabled(e.cfg)
 
 	baseURL := resolveAntigravityRequestBaseURL(auth)
-	httpClient := newAntigravityHTTPClient(ctx, e.cfg, auth, 0)
+	requestOp := antigravitywire.OperationInfer
+	if isImageModel {
+		requestOp = antigravitywire.OperationImage
+	} else if isWebSearchReq || strings.TrimSpace(doc.Get("requestType").String()) == "web_search" {
+		requestOp = antigravitywire.OperationSearch
+	}
+	httpClient := e.httpClientForOperation(ctx, auth, 0, requestOp)
 	httpClient = reporter.TrackHTTPClient(httpClient)
 	// Credential retry rounds are owned by the conductor. Perform one upstream
 	// request per credential so request-retry is not consumed twice.
@@ -134,7 +160,8 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 		replayRequestPayload, _ = antigravityReplayRequestEnvelopeFromDoc(doc)
 	}
 
-	httpReq, requestPayload, errReq := e.buildRequestDoc(ctx, auth, token, baseModel, doc, false, opts.Alt, baseURL, helps.ProviderSessionUUID("antigravity", opts.Metadata, req.Metadata))
+	sessionKey := e.resolveLifecycleSessionKey(ctx, opts, req)
+	httpReq, requestPayload, errReq := e.buildRequestDocWithLifecycle(ctx, auth, token, baseModel, doc, false, opts.Alt, baseURL, nil, sessionKey)
 	if errReq != nil {
 		err = errReq
 		return resp, err
@@ -354,7 +381,7 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 	useCredits := cliproxyauth.AntigravityCreditsRequested(ctx) && antigravityCreditsRetryEnabled(e.cfg)
 
 	baseURL := resolveAntigravityRequestBaseURL(auth)
-	httpClient := newAntigravityHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := e.httpClientForOperation(ctx, auth, 0, antigravitywire.OperationInfer)
 	httpClient = reporter.TrackHTTPClient(httpClient)
 
 	// Credential retry rounds are owned by the conductor. Perform one upstream
@@ -378,7 +405,32 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 	if replayScope.valid() {
 		replayRequestPayload, _ = antigravityReplayRequestEnvelopeFromDoc(doc)
 	}
-	httpReq, requestPayload, errReq := e.buildRequestDoc(ctx, auth, token, baseModel, doc, true, opts.Alt, baseURL, helps.ProviderSessionUUID("antigravity", opts.Metadata, req.Metadata))
+	sessionKey := e.resolveLifecycleSessionKey(ctx, opts, req)
+	reqType := strings.TrimSpace(doc.Get("requestType").String())
+	if reqType == "" {
+		reqType = "agent"
+	}
+	var lifecycle *cache.AntigravityLifecycleState
+	lifecycleSucceeded := false
+	var emittedToolIDs []string
+	if reqType != "web_search" && !strings.Contains(strings.ToLower(baseModel), "image") {
+		toolResultCounts := map[string]int{}
+		doc.Get("request.contents").ForEach(func(_, content ojson.Result) bool {
+			content.Get("parts").ForEach(func(_, part ojson.Result) bool {
+				if id := strings.TrimSpace(part.Get("functionResponse.id").String()); id != "" {
+					toolResultCounts[id]++
+				}
+				return true
+			})
+			return true
+		})
+		st := cache.BeginAntigravityLifecycle(ctx, sessionKey, reqType, baseModel, toolResultCounts)
+		lifecycle = &st
+		defer func() {
+			cache.FinishAntigravityLifecycle(context.WithoutCancel(ctx), *lifecycle, lifecycleSucceeded, emittedToolIDs)
+		}()
+	}
+	httpReq, requestPayload, errReq := e.buildRequestDocWithLifecycle(ctx, auth, token, baseModel, doc, true, opts.Alt, baseURL, lifecycle, sessionKey)
 	if errReq != nil {
 		err = errReq
 		return resp, err
@@ -550,6 +602,12 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 		return cliproxyexecutor.Response{}, err
 	}
 	if replayAccumulator != nil {
+		// 聚合后的非流式响应在清洁 EOF 下可能合法不含 finishReason（例如工具调用样本）；
+		// 仅当无截断 JSON、无未闭合流式工具调用且存在候选结果时标记终态，保留既有签名回放语义。
+		if !replayAccumulator.terminal && len(pendingJSON) == 0 && replayAccumulator.activeStreamingFC == nil && !replayAccumulator.hasIncompleteFC &&
+			(ojson.GetBytesNoCopy(aggregatedPayload, "response.candidates.0").Exists() || ojson.GetBytesNoCopy(aggregatedPayload, "candidates.0").Exists()) {
+			replayAccumulator.terminal = true
+		}
 		replayAccumulator.Commit(ctx)
 	}
 	resp = cliproxyexecutor.Response{Payload: aggregatedPayload}
@@ -573,6 +631,19 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 	reporter.Publish(ctx, antiDetail)
 	if responseFormat == sdktranslator.FormatOpenAIResponse {
 		converted = helps.EnsureResponsesUsageDetails(converted)
+	}
+	if lifecycle != nil {
+		partsNode := ojson.GetBytesNoCopy(aggregatedPayload, "response.candidates.0.content.parts")
+		if !partsNode.IsArray() {
+			partsNode = ojson.GetBytesNoCopy(aggregatedPayload, "candidates.0.content.parts")
+		}
+		partsNode.ForEach(func(_, part ojson.Result) bool {
+			if id := strings.TrimSpace(part.Get("functionCall.id").String()); id != "" {
+				emittedToolIDs = append(emittedToolIDs, id)
+			}
+			return true
+		})
+		lifecycleSucceeded = true
 	}
 	resp = cliproxyexecutor.Response{Payload: converted, Headers: httpResp.Header.Clone()}
 	reporter.EnsurePublished(ctx)

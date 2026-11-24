@@ -11,8 +11,7 @@ import (
 	"strings"
 
 	"github.com/MoeForge/moego/ojson"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
-	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/antigravitywire"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -82,20 +81,16 @@ func FetchAntigravityAvailableModels(ctx context.Context, req AntigravityModelPr
 		ctx = context.Background()
 	}
 
-	client := &http.Client{
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-	transport, _, errProxy := proxyutil.BuildHTTPTransport(strings.TrimSpace(req.ProxyURL))
-	if errProxy != nil {
+	client, errClient := antigravitywire.NewClient(antigravitywire.OperationModelDiscovery, strings.TrimSpace(req.ProxyURL), nil, 0)
+	if errClient != nil {
 		return AntigravityModelCapabilityHints{}, AntigravityProbeStatusTransientError
 	}
-	if transport != nil {
-		client.Transport = transport
-		defer transport.CloseIdleConnections()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
-	util.WrapGoogleRewriteClient(client)
+	if tr, ok := client.Transport.(interface{ CloseIdleConnections() }); ok {
+		defer tr.CloseIdleConnections()
+	}
 
 	doc := ojson.NewDoc([]byte("{}"))
 	doc.Set("project", strings.TrimSpace(req.ProjectID))

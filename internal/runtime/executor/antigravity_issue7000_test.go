@@ -93,7 +93,7 @@ func TestIssue7000AntigravityClaudeStructuredOutputUsesPromptAndAutoTools(t *tes
 					}
 
 					var systemText strings.Builder
-					for _, part := range request.Get("systemInstruction.parts").Array() {
+					for _, part := range request.Get("contents.0.parts").Array() {
 						systemText.WriteString(part.Get("text").String())
 						systemText.WriteByte('\n')
 					}

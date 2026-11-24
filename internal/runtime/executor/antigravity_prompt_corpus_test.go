@@ -91,7 +91,7 @@ func TestAntigravityPromptCorporaAreRewrittenOnWire(t *testing.T) {
 				t.Fatal(err)
 			}
 			wire := captureAntigravityWireBody(t, cfg, "gemini-4-carbon-high", doc.Bytes())
-			for _, path := range []string{"request.systemInstruction.parts.0.text", "request.contents.0.parts.0.text"} {
+			for _, path := range []string{"request.contents.0.parts.0.text", "request.contents.2.parts.0.text"} {
 				if got := ojson.GetBytes(wire, path).String(); got != sample.Want {
 					t.Errorf("%s: rewritten output differs", path)
 				}

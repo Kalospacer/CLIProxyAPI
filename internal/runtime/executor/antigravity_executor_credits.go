@@ -14,6 +14,7 @@ import (
 
 	"github.com/MoeForge/moego/json"
 	"github.com/MoeForge/moego/ojson"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/antigravitywire"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	homekv "github.com/router-for-me/CLIProxyAPI/v8/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
@@ -622,7 +623,7 @@ func (e *AntigravityExecutor) updateAntigravityCreditsBalanceForTask(ctx context
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("User-Agent", userAgent)
 
-	httpClient := newAntigravityHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := e.httpClientForOperation(ctx, auth, 0, antigravitywire.OperationQuota)
 	httpResp, errDo := helps.WithAntigravityHTTPClientTrace(httpClient, auth, "credits_query").Do(httpReq)
 	if errDo != nil {
 		log.Debugf("antigravity executor: loadCodeAssist request error: %v", errDo)

@@ -637,8 +637,8 @@ func TestAntigravityTransportMatchesNativeTLSProfile(t *testing.T) {
 		t.Fatalf("close response body: %v", errClose)
 	}
 
-	if len(clientHelloProtos) != 0 {
-		t.Fatalf("ClientHello ALPN = %v, want no ALPN extension", clientHelloProtos)
+	if len(clientHelloProtos) != 1 || clientHelloProtos[0] != "http/1.1" {
+		t.Fatalf("ClientHello ALPN = %v, want [http/1.1]", clientHelloProtos)
 	}
 	if requestProto != "HTTP/1.1" {
 		t.Fatalf("request protocol = %q, want HTTP/1.1", requestProto)
@@ -646,8 +646,8 @@ func TestAntigravityTransportMatchesNativeTLSProfile(t *testing.T) {
 	if tlsVersion != tls.VersionTLS13 {
 		t.Fatalf("TLS version = %#x, want TLS 1.3", tlsVersion)
 	}
-	if negotiatedProtocol != "" {
-		t.Fatalf("negotiated ALPN = %q, want empty", negotiatedProtocol)
+	if negotiatedProtocol != "http/1.1" {
+		t.Fatalf("negotiated ALPN = %q, want http/1.1", negotiatedProtocol)
 	}
 }
 

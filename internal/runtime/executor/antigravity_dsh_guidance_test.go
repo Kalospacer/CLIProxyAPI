@@ -46,7 +46,7 @@ func TestAntigravityDSHOutboundRequestIsNeutralized(t *testing.T) {
 		t.Fatal(err)
 	}
 	wire := captureAntigravityWireBody(t, cfg, "gemini-3.1-pro-preview", doc.Bytes())
-	system := ojson.GetBytes(wire, "request.systemInstruction.parts.0.text").String()
+	system := ojson.GetBytes(wire, "request.contents.0.parts.0.text").String()
 	assertDSHGuidanceSentencesRewritten(t, system)
 
 	for _, marker := range []string{"DeepSeek", "deepseek", "Harness", "DSH", "dsh"} {

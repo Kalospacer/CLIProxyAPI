@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/MoeForge/moego/ojson"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/antigravitywire"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -83,7 +84,7 @@ func (e *AntigravityExecutor) CountTokens(ctx context.Context, auth *cliproxyaut
 	_ = doc.Delete("request.sessionId")
 
 	base := resolveAntigravityRequestBaseURL(auth)
-	httpClient := newAntigravityHTTPClient(ctx, e.cfg, auth, 0)
+	httpClient := e.httpClientForOperation(ctx, auth, 0, antigravitywire.OperationCountTokens)
 
 	var authID, authLabel, authType, authValue string
 	if auth != nil {

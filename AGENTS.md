@@ -125,3 +125,14 @@ go build -o test-output ./cmd/server && rm test-output # Verify compile (REQUIRE
 - 2026-11-18：2.1.299 原版 CLI 在仅回环沙盒完成专项前后真实文件工具循环；请求头与正文对照 Antigravity 原生样本。
 - 规则包现有 203 条正则、68 条字面替换。可执行路径、环境变量和工具合同保留，详细证据及未验证项见 `docs/antigravity-claude-real-client.zh-CN.md`。
 - 本批只推送暂存分支；按用户最新授权，后续完成三客户端后统一合并 main、加载规则并部署。旧记录中“OpenCode 排除/不部署”不再约束本批任务。
+
+## Antigravity 对齐 Stravia v0.7.5 / 官方 CLI 1.5.13 状态（2026-11-24）
+
+- 隔离工作区基线为 `ffeaf6361c72388ef09b0e704578984e08c82107`；已在项目外做好全量备份，**当前修改尚未提交、尚未推送、尚未部署生产，且未向 Google 发起真实账号推理实测**。
+- 新增 `internal/antigravitywire`（`Operation`、`dialer`、`NewClient`），使用既有 `uTLS v1.8.2` 复刻官方 CLI 1.5.13 TLS ClientHello（ALPN `["http/1.1"]`，`JA3 = 03117a8ed39ef02427ebbc39f121275c`）与 HTTP/1.1 头序；已接入执行器、模型目录发现、认证初始化与管理端令牌刷新，CPA 独有 `countTokens` 显式保留非 uTLS 标准传输；OAuth 本地回环回调保持不变。
+- 已按确认删除 `internal/util/google_rewrite.go` 及其全部 Cloudflare Worker 改写调用点，消除 Worker 导致的 TLS 重握与自动复制 `x-api-key`。
+- UA 升级为官方实测 `antigravity/cli/1.5.13 (aidev_client; os_type=linux; arch=amd64; cl=1025641825; auth_method=consumer)`，`onboardUser` 移除旧 Node SDK 头。
+- 系统指令采用官方 296 字节通用助手前缀（带 `systemInstruction.role = "user"`）加独立编写的三段式桥接（未复制 Stravia AGPL-3.0 桥接原文）；敏感词改写早于桥接，`FinalizePayloadDoc` 仍为最终语义屏障。
+- 新增 `internal/cache/antigravity_lifecycle_cache.go`（`AntigravityLifecycleState`、`BeginAntigravityLifecycle`、`FinishAntigravityLifecycle`），独立于 reasoning replay 缓存维护最小多轮轨迹与分会话 FNV-1a64 `sessionId`；缺会话标识或存储故障时优雅降级，不编造步号。
+- 除图片模型与 `web_search` 外，普通文本非流式推理统一走上游 `streamGenerateContent?alt=sse`（保留无 `finishReason` 正常收尾保护）；保留 CPA 既有模型别名，`thinkingLevel` 规范为大写枚举（保留数值型）。详见 `docs/antigravity-stravia-parity.zh-CN.md`。
+- 已在隔离环境完成真实 **Codex 0.160.0**、**DSH 0.2.2-rc.1** 与 **AstrBot 4.28.0**（Chat 流式/非流式 + Responses 流式）三客户端多轮与内置工具端到端验证，并修复阶段 C 暴露的 Codex 显式会话键（`CanonicalSessionIDMetadataKey` / `Session_id` / `prompt_cache_key`）解析缺口；16 条最终捕获全部逐字节匹配官方 CLI 1.5.13 的 TLS JA3、ALPN 与 HTTP/1.1 头序。

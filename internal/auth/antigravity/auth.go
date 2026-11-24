@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MoeForge/moego/json"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/antigravitywire"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/misc"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
@@ -53,6 +54,7 @@ func (e *HTTPStatusError) StatusCode() int {
 // AntigravityAuth handles Antigravity OAuth authentication
 type AntigravityAuth struct {
 	httpClient *http.Client
+	initErr    error
 }
 
 // NewAntigravityAuth creates a new Antigravity auth service.
@@ -63,9 +65,12 @@ func NewAntigravityAuth(cfg *config.Config, httpClient *http.Client) *Antigravit
 	if httpClient != nil {
 		return &AntigravityAuth{httpClient: httpClient}
 	}
-	return &AntigravityAuth{
-		httpClient: util.SetProxy(&cfg.SDKConfig, &http.Client{}),
+	client, errWire := antigravitywire.NewClient(antigravitywire.OperationProjectDiscovery, cfg.ProxyURL, nil, 0)
+	if errWire != nil {
+		// 显式记录初始化错误，调用时直接失败，不静默退回普通客户端。
+		return &AntigravityAuth{initErr: errWire}
 	}
+	return &AntigravityAuth{httpClient: client}
 }
 
 func (o *AntigravityAuth) shortUserAgent() string {
@@ -156,6 +161,9 @@ func (o *AntigravityAuth) BuildAuthURL(state, redirectURI string) string {
 
 // ExchangeCodeForTokens exchanges authorization code for access and refresh tokens
 func (o *AntigravityAuth) ExchangeCodeForTokens(ctx context.Context, code, redirectURI string) (*TokenResponse, error) {
+	if o.initErr != nil {
+		return nil, fmt.Errorf("antigravity token exchange: %w", o.initErr)
+	}
 	data := url.Values{}
 	data.Set("code", code)
 	data.Set("client_id", ClientID)
@@ -201,6 +209,9 @@ func (o *AntigravityAuth) ExchangeCodeForTokens(ctx context.Context, code, redir
 
 // FetchUserInfo retrieves user email from Google
 func (o *AntigravityAuth) FetchUserInfo(ctx context.Context, accessToken string) (string, error) {
+	if o.initErr != nil {
+		return "", fmt.Errorf("antigravity userinfo: %w", o.initErr)
+	}
 	accessToken = strings.TrimSpace(accessToken)
 	if accessToken == "" {
 		return "", fmt.Errorf("antigravity userinfo: missing access token")
@@ -247,6 +258,9 @@ func (o *AntigravityAuth) FetchUserInfo(ctx context.Context, accessToken string)
 
 // FetchProjectID retrieves the project ID for the authenticated user via loadCodeAssist
 func (o *AntigravityAuth) FetchProjectID(ctx context.Context, accessToken string) (string, error) {
+	if o.initErr != nil {
+		return "", fmt.Errorf("antigravity loadCodeAssist: %w", o.initErr)
+	}
 	userAgent := o.shortUserAgent()
 	loadReqBody := map[string]any{
 		"metadata": antigravityLoadCodeAssistMetadata(),
@@ -311,6 +325,9 @@ func (o *AntigravityAuth) FetchProjectID(ctx context.Context, accessToken string
 
 // OnboardUser attempts to fetch the project ID via onboardUser by polling for completion
 func (o *AntigravityAuth) OnboardUser(ctx context.Context, accessToken, tierID string) (string, error) {
+	if o.initErr != nil {
+		return "", fmt.Errorf("antigravity onboardUser: %w", o.initErr)
+	}
 	log.Infof("Antigravity: onboarding user with tier: %s", tierID)
 	userAgent := o.nodeUserAgent()
 	requestBody := map[string]any{
@@ -341,10 +358,8 @@ func (o *AntigravityAuth) OnboardUser(ctx context.Context, accessToken, tierID s
 			return "", fmt.Errorf("create request: %w", errRequest)
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
-		req.Header.Set("Accept", "*/*")
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", userAgent)
-		req.Header.Set("X-Goog-Api-Client", misc.AntigravityGoogAPIClientUA)
 
 		resp, errDo := o.httpClient.Do(req)
 		if errDo != nil {

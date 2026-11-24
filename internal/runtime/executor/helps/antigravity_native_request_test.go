@@ -3,6 +3,7 @@ package helps
 import (
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/MoeForge/moego/ojson"
@@ -48,13 +49,19 @@ func TestNormalizeAntigravityAgentRequestPreservesContentAndTools(t *testing.T) 
 	second := doc.Get("request.tools.0.functionDeclarations.1").Raw
 	scoped := doc.Get("request.tools.2").Raw
 	NormalizeAntigravityAgentRequestDoc(doc)
-	if doc.Get("request.systemInstruction.role").String() != "user" || doc.Get("request.systemInstruction.parts.0.text").String() != "Custom instructions from an unknown harness" {
-		t.Fatalf("system instruction changed unexpectedly: %s", doc.Bytes())
+	if doc.Get("request.systemInstruction.role").String() != "user" || !strings.HasPrefix(doc.Get("request.systemInstruction.parts.0.text").String(), antigravityOfficialIdentityPrefix) {
+		t.Fatalf("system instruction missing official prefix: %s", doc.Bytes())
+	}
+	if doc.Get("request.contents.0.role").String() != "user" || doc.Get("request.contents.0.parts.0.text").String() != "Custom instructions from an unknown harness" {
+		t.Fatalf("client system instruction not bridged to contents[0]: %s", doc.Bytes())
+	}
+	if doc.Get("request.contents.1.role").String() != "model" || doc.Get("request.contents.1.parts.0.text").String() != antigravityIndependentBridgeAck {
+		t.Fatalf("bridge acknowledgement missing at contents[1]: %s", doc.Bytes())
 	}
 	if doc.Get("request.tools.0.functionDeclarations.0").Raw != first || doc.Get("request.tools.1.functionDeclarations.0").Raw != second || doc.Get("request.tools.3").Raw != scoped {
 		t.Fatalf("tool content or scoped wrapper changed: %s", doc.Bytes())
 	}
-	if doc.Get("request.contents").Raw != contents || !doc.Get("request.tools.2.googleSearch").Exists() {
+	if "["+doc.Get("request.contents.2").Raw+"]" != contents || !doc.Get("request.tools.2.googleSearch").Exists() {
 		t.Fatalf("conversation or built-in tool changed: %s", doc.Bytes())
 	}
 	before := doc.String()
@@ -69,8 +76,12 @@ func TestNormalizeAntigravityAgentRequestKeepsExplicitRoleAndSpecialRequests(t *
 		doc := ojson.NewDocString(`{"request":{"systemInstruction":{"role":"system","parts":[{"text":"keep"}]},"tools":[{"functionDeclarations":[{"name":"a"},{"name":"b"}]}]}}`)
 		_ = doc.Set("requestType", requestType)
 		NormalizeAntigravityAgentRequestDoc(doc)
-		if doc.Get("request.systemInstruction.role").String() != "system" {
-			t.Fatalf("explicit role overwritten for %s", requestType)
+		wantRole := "system"
+		if requestType == "agent" {
+			wantRole = "user"
+		}
+		if doc.Get("request.systemInstruction.role").String() != wantRole {
+			t.Fatalf("systemInstruction.role for %s = %q, want %q", requestType, doc.Get("request.systemInstruction.role").String(), wantRole)
 		}
 		if requestType != "agent" && len(doc.Get("request.tools").Array()) != 1 {
 			t.Fatalf("special request %s was regrouped", requestType)
